@@ -15,7 +15,7 @@ class World:
         self.obj_clr = None
         self.obj_mass = None
         self.obj_rad = None
-        self.obj_unfixed = None
+        self.obj_active = None
 
         self.num_pixels = NUM_COLS * NUM_ROWS
         self.num_objs = None
@@ -60,9 +60,9 @@ class World:
         self.obj_clr = np.tile(INIT_CLR.copy(), (self.num_pixels, 1, 1))
         self.obj_mass = np.tile(INIT_MASS.copy(), (self.num_pixels, 1))
         self.obj_rad = np.tile(INIT_RAD.copy(), (self.num_pixels, 1))
-        self.obj_unfixed = np.tile(INIT_UNFIXED.copy(), (self.num_pixels, 1))
 
         self.num_objs = len(INIT_MASS)
+        self.obj_active = np.ones((self.num_pixels, self.num_objs))
         self.pixel_complete = np.zeros(self.num_pixels)
 
     def update(self):
@@ -71,11 +71,17 @@ class World:
         self.update_pixels()
 
     def simulate(self):
-        for obj in range(self.num_objs):
-            for other in range(obj + 1, self.num_objs):
 
-                for p in range(self.num_pixels):
-                    if self.pixel_complete[p]:
+        for p in range(self.num_pixels):
+            if self.pixel_complete[p]:
+                continue
+
+            for obj in range(self.num_objs):
+                if not self.obj_active[p, obj]:
+                    continue
+
+                for other in range(obj + 1, self.num_objs):
+                    if not self.obj_active[p, other]:
                         continue
 
                     ma = self.obj_mass[p, obj]
@@ -86,22 +92,19 @@ class World:
                     dist_squared = 1.0 if dist_squared == 0 else dist_squared
                     dist = math.sqrt(dist_squared)
 
-                    unfixed_a = self.obj_unfixed[p, obj]
-                    unfixed_b = self.obj_unfixed[p, other]
-
                     mag = 1.0 / dist_squared / dist * GRAV_CONST * SIM_SPEED
-                    self.obj_vx[p, obj] += mb * dx * mag * unfixed_a
-                    self.obj_vy[p, obj] += mb * dy * mag * unfixed_a
-                    self.obj_vx[p, other] -= ma * dx * mag * unfixed_b
-                    self.obj_vy[p, other] -= ma * dy * mag * unfixed_b
+                    self.obj_vx[p, obj] += mb * dx * mag
+                    self.obj_vy[p, obj] += mb * dy * mag
+                    self.obj_vx[p, other] -= ma * dx * mag
+                    self.obj_vy[p, other] -= ma * dy * mag
 
                     if dist < self.obj_rad[p, obj] + self.obj_rad[p, other]:
                         if obj == TRACK_INDEX or other == TRACK_INDEX:
                             self.end_round(p, obj if obj != TRACK_INDEX else other)
                         self.combine_list.append([p, min(obj, other), max(obj, other)])
 
-        self.obj_x += self.obj_vx * self.obj_unfixed * SIM_SPEED
-        self.obj_y += self.obj_vy * self.obj_unfixed * SIM_SPEED
+        self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
+        self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
 
         self.timer += SIM_SPEED
         if self.timer > TIME_LIMIT:
@@ -117,6 +120,7 @@ class World:
             p = self.combine_list[i][0]
             a = self.combine_list[i][1]
             b = self.combine_list[i][2]
+            print(p, a, b)
             if a == b:
                 continue
 
@@ -139,7 +143,7 @@ class World:
             self.obj_clr[p, a] = self.obj_clr[p, a] * ma / mt + self.obj_clr[p, b] * mb / mt
 
             self.obj_mass[p, b] = 0
-            self.obj_unfixed[p, b] = 0
+            self.obj_active[p, b] = 0
 
             if p == self.pixel_view:
                 self.obj_points[b].x = -self.obj_rad[p, b]
