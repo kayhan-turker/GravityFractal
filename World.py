@@ -1,3 +1,5 @@
+import math
+
 from pyglet import shapes
 from init_params import *
 import numpy as np
@@ -71,25 +73,29 @@ class World:
     def simulate(self):
         for obj in range(self.num_objs):
             for other in range(obj + 1, self.num_objs):
-                ma = self.obj_mass[:, obj]
-                mb = self.obj_mass[:, other]
-                dx = self.obj_x[:, other] - self.obj_x[:, obj]
-                dy = self.obj_y[:, other] - self.obj_y[:, obj]
-                dist_squared = dx * dx + dy * dy
-                dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
-                dist = np.sqrt(dist_squared)
-
-                unfixed_a = self.obj_unfixed[:, obj]
-                unfixed_b = self.obj_unfixed[:, other]
-
-                mag = np.ones(self.num_pixels) / dist_squared / dist * GRAV_CONST * SIM_SPEED
-                self.obj_vx[:, obj] += mb * dx * mag * unfixed_a
-                self.obj_vy[:, obj] += mb * dy * mag * unfixed_a
-                self.obj_vx[:, other] -= ma * dx * mag * unfixed_b
-                self.obj_vy[:, other] -= ma * dy * mag * unfixed_b
 
                 for p in range(self.num_pixels):
-                    if dist[p] < self.obj_rad[p, obj] + self.obj_rad[p, other]:
+                    if self.pixel_complete[p]:
+                        continue
+
+                    ma = self.obj_mass[p, obj]
+                    mb = self.obj_mass[p, other]
+                    dx = self.obj_x[p, other] - self.obj_x[p, obj]
+                    dy = self.obj_y[p, other] - self.obj_y[p, obj]
+                    dist_squared = dx * dx + dy * dy
+                    dist_squared = 1.0 if dist_squared == 0 else dist_squared
+                    dist = math.sqrt(dist_squared)
+
+                    unfixed_a = self.obj_unfixed[p, obj]
+                    unfixed_b = self.obj_unfixed[p, other]
+
+                    mag = 1.0 / dist_squared / dist * GRAV_CONST * SIM_SPEED
+                    self.obj_vx[p, obj] += mb * dx * mag * unfixed_a
+                    self.obj_vy[p, obj] += mb * dy * mag * unfixed_a
+                    self.obj_vx[p, other] -= ma * dx * mag * unfixed_b
+                    self.obj_vy[p, other] -= ma * dy * mag * unfixed_b
+
+                    if dist < self.obj_rad[p, obj] + self.obj_rad[p, other]:
                         if obj == TRACK_INDEX or other == TRACK_INDEX:
                             self.end_round(p, obj if obj != TRACK_INDEX else other)
                         self.combine_list.append([p, min(obj, other), max(obj, other)])
