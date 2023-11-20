@@ -63,7 +63,7 @@ class World:
         self.combine_list.clear()
 
         pixel_clr = (0, 0, 0) if hit_obj is None else self.obj_clr[hit_obj]
-        time_const = 255 / (PIXEL_CONTRAST * self.timer + 1)
+        time_const = 1.0 / (PIXEL_CONTRAST * self.timer + 1)
         pixel_clr = [round(pixel_clr[i] * time_const) for i in range(3)]
         self.grid_rectangles[self.start_x][self.start_y].color = pixel_clr
 
