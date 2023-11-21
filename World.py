@@ -42,10 +42,9 @@ class World:
         for obj in range(self.num_objs):
             self.obj_points[obj] = shapes.Circle(SCREEN_WIDTH + self.obj_x[self.pixel_view, obj],
                                                  self.obj_y[self.pixel_view, obj], self.obj_rad[self.pixel_view, obj],
-                                                 color=self.obj_clr[self.pixel_view, obj], batch=grav_batch)
+                                                 color=self.obj_clr[self.pixel_view, obj].astype(int), batch=grav_batch)
 
     def init_objs(self):
-
         self.obj_x = np.tile(INIT_X.copy(), (self.num_pixels, 1))
         self.obj_y = np.tile(INIT_Y.copy(), (self.num_pixels, 1))
 
@@ -68,11 +67,10 @@ class World:
 
     def update(self):
         self.simulate()
-        self.combine()
+        self.process_combine_list()
         self.update_pixels()
 
     def simulate(self):
-
         for p in range(self.num_pixels):
             if not self.pixel_active[p, 0]:
                 continue
@@ -85,8 +83,6 @@ class World:
                     if not self.obj_active[p, other]:
                         continue
 
-                    ma = self.obj_mass[p, obj]
-                    mb = self.obj_mass[p, other]
                     dx = self.obj_x[p, other] - self.obj_x[p, obj]
                     dy = self.obj_y[p, other] - self.obj_y[p, obj]
                     dist_squared = dx * dx + dy * dy
@@ -95,7 +91,9 @@ class World:
                     sum_rad = self.obj_rad[p, obj] + self.obj_rad[p, other]
 
                     if dist > sum_rad * STOP_GRAV_FACTOR:
-                        mag = 1.0 / dist_squared / dist * GRAV_CONST * SIM_SPEED
+                        mag = 1.0 / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+                        ma = self.obj_mass[p, obj]
+                        mb = self.obj_mass[p, other]
                         self.obj_vx[p, obj] += mb * dx * mag
                         self.obj_vy[p, obj] += mb * dy * mag
                         self.obj_vx[p, other] -= ma * dx * mag
@@ -116,39 +114,23 @@ class World:
             for p in range(self.num_pixels):
                 self.gather_pixel(p, None)
 
-    def combine(self):
+    def process_combine_list(self):
         len_list = len(self.combine_list)
-        if len_list == 0:
-            return
-
-        for i in range(len_list):
-            p = self.combine_list[i][0]
-            a = self.combine_list[i][1]
-            b = self.combine_list[i][2]
-            if a == b:
-                continue
-
-            if a != TRACK_INDEX and b != TRACK_INDEX and INIT_MASS[TRACK_INDEX] == 0.0:
-                self.combine_objs_all_pixels(a, b)
-
-                for j in range(i + 1, len_list):
-                    combine_inst = self.combine_list[j]
-                    if combine_inst[1] == b:
-                        combine_inst[1] = a
-                    if combine_inst[2] == b:
-                        combine_inst[2] = a
-            else:
-                self.combine_objs_single_pixel(p, a, b)
-
-                for j in range(i + 1, len_list):
-                    combine_inst = self.combine_list[j]
-                    if combine_inst[0] == p:
-                        if combine_inst[1] == b:
-                            combine_inst[1] = a
-                        if combine_inst[2] == b:
-                            combine_inst[2] = a
-
-        self.combine_list.clear()
+        if len_list != 0:
+            for i in range(len_list):
+                p, a, b = self.combine_list[i]
+                if a != b:
+                    # combine (for all pixels if pixel doesnt change outcome)
+                    combine_all_pixels = a != TRACK_INDEX and b != TRACK_INDEX and INIT_MASS[TRACK_INDEX] == 0.0
+                    self.combine_objs_all_pixels(a, b) if combine_all_pixels else (
+                        self.combine_objs_single_pixel(p, a, b))
+        
+                    # replace next objects with new id if collided with something else
+                    for j in range(i + 1, len_list):
+                        if combine_all_pixels or self.combine_list[j][0] == p:
+                            self.combine_list[j][1:] = [a if x == b else x for x in self.combine_list[j][1:]]
+    
+            self.combine_list.clear()
 
     def combine_objs_all_pixels(self, a, b):
         ma = self.obj_mass[:, a]
@@ -211,7 +193,7 @@ class World:
 
         if p == self.pixel_view:
             self.obj_points[a].radius = self.obj_rad[p, a]
-            self.obj_points[a].color = self.obj_clr[p, a]
+            self.obj_points[a].color = self.obj_clr[p, a].astype(int)
             self.obj_points[b].x = self.obj_x[p, b]
             self.obj_points[b].y = self.obj_y[p, b]
 
