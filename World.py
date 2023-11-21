@@ -1,8 +1,7 @@
-import math
-
 from pyglet import shapes
 from init_params import *
 import numpy as np
+import math
 
 
 class World:

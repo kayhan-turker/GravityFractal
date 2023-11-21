@@ -21,5 +21,13 @@ def update(dt):
     world.update()
 
 
+@window.event
+def on_mouse_press(x, y, button, modifiers):
+    if button == 1:
+        click_x = x // GRID_LENGTH
+        click_y = y // GRID_LENGTH
+        world.pixel_view = click_x + click_y * NUM_COLS
+
+
 pyglet.clock.schedule_interval(update, 1 / 60.0)
 pyglet.app.run()
