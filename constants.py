@@ -16,9 +16,6 @@ NUM_ROWS = SCREEN_HEIGHT // GRID_LENGTH
 GRAV_CONST = 1
 SIM_SPEED = 4
 
-# if distance is < sum radii * factor, stop gravitating
-STOP_GRAV_FACTOR = 1
-
 TRACK_INDEX = 0
 TIME_LIMIT = 1000000000
 PIXEL_CONTRAST = 0.25

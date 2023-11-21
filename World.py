@@ -18,7 +18,6 @@ class World:
 
         self.num_pixels = NUM_COLS * NUM_ROWS
         self.num_objs = None
-        self.pixel_active = None
 
         self.init_objs()
 
@@ -63,7 +62,6 @@ class World:
 
         self.num_objs = len(INIT_MASS)
         self.obj_active = np.ones((self.num_pixels, self.num_objs))
-        self.pixel_active = np.ones((self.num_pixels, self.num_objs))
 
     def update(self):
         self.simulate()
@@ -71,43 +69,40 @@ class World:
         self.update_pixels()
 
     def simulate(self):
-        for p in range(self.num_pixels):
-            if not self.pixel_active[p, 0]:
-                continue
+        num_objs = self.num_objs
 
-            for obj in range(self.num_objs):
-                if not self.obj_active[p, obj]:
-                    continue
+        dx = np.tile(np.expand_dims(self.obj_x.copy(), 2), (1, 1, num_objs))
+        dy = np.tile(np.expand_dims(self.obj_y.copy(), 2), (1, 1, num_objs))
+        dx = dx.transpose((0, 2, 1)) - dx
+        dy = dy.transpose((0, 2, 1)) - dy
+        dist_squared = dx * dx + dy * dy
+        dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
+        dist = np.sqrt(dist_squared)
 
-                for other in range(obj + 1, self.num_objs):
-                    if not self.obj_active[p, other]:
-                        continue
+        mag = self.obj_active.copy()
+        mag = mag[0] * mag[0].reshape(5, 1)
+        mag = mag / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+        mag = mag * np.expand_dims(self.obj_mass, 1)
 
-                    dx = self.obj_x[p, other] - self.obj_x[p, obj]
-                    dy = self.obj_y[p, other] - self.obj_y[p, obj]
-                    dist_squared = dx * dx + dy * dy
-                    dist_squared = 1.0 if dist_squared == 0 else dist_squared
-                    dist = math.sqrt(dist_squared)
-                    sum_rad = self.obj_rad[p, obj] + self.obj_rad[p, other]
+        dvx = mag * dx
+        dvy = mag * dy
 
-                    if dist > sum_rad * STOP_GRAV_FACTOR:
-                        mag = 1.0 / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
-                        ma = self.obj_mass[p, obj]
-                        mb = self.obj_mass[p, other]
-                        self.obj_vx[p, obj] += mb * dx * mag
-                        self.obj_vy[p, obj] += mb * dy * mag
-                        self.obj_vx[p, other] -= ma * dx * mag
-                        self.obj_vy[p, other] -= ma * dy * mag
+        self.obj_vx += np.sum(dvx, 2)
+        self.obj_vy += np.sum(dvy, 2)
 
-                    if dist < sum_rad:
+        for obj in range(num_objs):
+            for other in range(obj + 1, num_objs):
+                sum_rad = self.obj_rad[:, obj] + self.obj_rad[:, other]
+                for p in range(self.num_pixels):
+                    if dist[p, obj, other] < sum_rad[p]:
                         if obj == TRACK_INDEX or other == TRACK_INDEX:
                             self.gather_pixel(p, obj if obj != TRACK_INDEX else other)
                             self.combine_list.append([p, TRACK_INDEX, obj if obj != TRACK_INDEX else other])
                         else:
                             self.combine_list.append([p, min(obj, other), max(obj, other)])
 
-        self.obj_x += self.obj_vx * self.obj_active * self.pixel_active * SIM_SPEED
-        self.obj_y += self.obj_vy * self.obj_active * self.pixel_active * SIM_SPEED
+        self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
+        self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
 
         self.timer += SIM_SPEED
         if self.timer > TIME_LIMIT:
@@ -198,8 +193,6 @@ class World:
             self.obj_points[b].y = self.obj_y[p, b]
 
     def gather_pixel(self, p, hit_obj):
-        if self.pixel_active[p, 0] == 0:
-            return
         if COLOR_MODE == 1 and hit_obj == self.pixel_last_collide[p]:
             return
 
@@ -213,8 +206,6 @@ class World:
             time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
             pixel_clr = pixel_clr * time_const
             self.grid_rectangles[px][py].color = pixel_clr.astype(int)
-
-            self.pixel_active[p, :] = 0
 
         elif COLOR_MODE == 1:
             self.pixel_last_collide[p] = hit_obj
