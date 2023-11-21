@@ -11,6 +11,6 @@ INIT_VX = np.array((0.0, 0.0, 0.0))
 INIT_VY = np.array((0.0, 0.0, -0.0))
 
 INIT_CLR = np.array(((255, 255, 255), (255, 0, 0), (0, 0, 255)))
-INIT_MASS = np.array((0.0, 0.0, 1.0))
+INIT_MASS = np.array((0.0, 1.0, 1.0))
 INIT_RAD = np.array((2.0, 8.0, 8.0))
 INIT_UNFIXED = np.array((1.0, 1.0, 1.0))

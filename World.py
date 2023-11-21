@@ -19,7 +19,7 @@ class World:
 
         self.num_pixels = NUM_COLS * NUM_ROWS
         self.num_objs = None
-        self.pixel_complete = None
+        self.pixel_active = None
 
         self.init_objs()
 
@@ -63,7 +63,7 @@ class World:
 
         self.num_objs = len(INIT_MASS)
         self.obj_active = np.ones((self.num_pixels, self.num_objs))
-        self.pixel_complete = np.zeros(self.num_pixels)
+        self.pixel_active = np.ones((self.num_pixels, self.num_objs))
 
     def update(self):
         self.simulate()
@@ -73,7 +73,7 @@ class World:
     def simulate(self):
 
         for p in range(self.num_pixels):
-            if self.pixel_complete[p]:
+            if not self.pixel_active[p, 0]:
                 continue
 
             for obj in range(self.num_objs):
@@ -101,10 +101,11 @@ class World:
                     if dist < self.obj_rad[p, obj] + self.obj_rad[p, other]:
                         if obj == TRACK_INDEX or other == TRACK_INDEX:
                             self.end_round(p, obj if obj != TRACK_INDEX else other)
-                        self.combine_list.append([p, min(obj, other), max(obj, other)])
+                        else:
+                            self.combine_list.append([p, min(obj, other), max(obj, other)])
 
-        self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
-        self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
+        self.obj_x += self.obj_vx * self.obj_active * self.pixel_active * SIM_SPEED
+        self.obj_y += self.obj_vy * self.obj_active * self.pixel_active * SIM_SPEED
 
         self.timer += SIM_SPEED
         if self.timer > TIME_LIMIT:
@@ -120,36 +121,26 @@ class World:
             p = self.combine_list[i][0]
             a = self.combine_list[i][1]
             b = self.combine_list[i][2]
-            print(p, a, b)
             if a == b:
                 continue
 
-            ra = self.obj_rad[p, a]
-            rb = self.obj_rad[p, b]
-            ma = self.obj_mass[p, a]
-            mb = self.obj_mass[p, b]
-            if ma == 0 and mb == 0:
-                ma = 1
-                mb = 1
-            mt = ma + mb
+            self.combine_objs_single_pixel(p, a, b, len_list)
 
-            self.obj_x[p, a] = self.obj_x[p, a] * ma / mt + self.obj_x[p, b] * mb / mt
-            self.obj_y[p, a] = self.obj_y[p, a] * ma / mt + self.obj_y[p, b] * mb / mt
-            self.obj_vx[p, a] = self.obj_vx[p, a] * ma / mt + self.obj_vx[p, b] * mb / mt
-            self.obj_vy[p, a] = self.obj_vy[p, a] * ma / mt + self.obj_vy[p, b] * mb / mt
+        self.combine_list.clear()
 
-            self.obj_mass[p, a] = mt
-            self.obj_rad[p, a] = (mt * mt / (ma * ma / ra / ra / ra + mb * mb / rb / rb / rb)) ** (1 / 3)
-            self.obj_clr[p, a] = self.obj_clr[p, a] * ma / mt + self.obj_clr[p, b] * mb / mt
+    def combine(self):
+        len_list = len(self.combine_list)
+        if len_list == 0:
+            return
 
-            self.obj_mass[p, b] = 0
-            self.obj_active[p, b] = 0
+        for i in range(len_list):
+            p = self.combine_list[i][0]
+            a = self.combine_list[i][1]
+            b = self.combine_list[i][2]
+            if a == b:
+                continue
 
-            if p == self.pixel_view:
-                self.obj_points[b].x = -self.obj_rad[p, b]
-                self.obj_points[b].y = -self.obj_rad[p, b]
-                self.obj_points[a].radius = self.obj_rad[p, a]
-                self.obj_points[a].color = self.obj_clr[p, a]
+            self.combine_objs_single_pixel(p, a, b)
 
             for j in range(i + 1, len_list):
                 combine_inst = self.combine_list[j]
@@ -161,8 +152,73 @@ class World:
 
         self.combine_list.clear()
 
+    def combine_objs_all_pixels(self, a, b):
+        ma = self.obj_mass[:, a]
+        mb = self.obj_mass[:, b]
+        mt = ma + mb
+        ma = np.where(mt == 0, 1.0, ma)
+        mb = np.where(mt == 0, 1.0, mb)
+        ma = ma / mt
+        mb = mb / mt
+
+        self.obj_x[:, a] = self.obj_x[:, a] * ma + self.obj_x[:, b] * mb
+        self.obj_y[:, a] = self.obj_y[:, a] * ma + self.obj_y[:, b] * mb
+        self.obj_vx[:, a] = self.obj_vx[:, a] * ma + self.obj_vx[:, b] * mb
+        self.obj_vy[:, a] = self.obj_vy[:, a] * ma + self.obj_vy[:, b] * mb
+
+        self.obj_mass[:, a] = mt
+        self.obj_rad[:, a] = self.obj_rad[:, a] * ma + self.obj_rad[:, b] * mb
+        ma_clr = np.tile(np.expand_dims(ma, 1), (1, 3))
+        mb_clr = np.tile(np.expand_dims(mb, 1), (1, 3))
+        self.obj_clr[:, a] = self.obj_clr[:, a] * ma_clr + self.obj_clr[:, b] * mb_clr
+
+        self.obj_x[:, b] = -self.obj_rad[:, b]
+        self.obj_y[:, b] = -self.obj_rad[:, b]
+        self.obj_vx[:, b] = 0
+        self.obj_vy[:, b] = 0
+        self.obj_mass[:, b] = 0
+        self.obj_active[:, b] = 0
+
+        p = self.pixel_view
+        self.obj_points[a].radius = self.obj_rad[p, a]
+        self.obj_points[a].color = self.obj_clr[p, a]
+        self.obj_points[b].x = self.obj_x[p, b]
+        self.obj_points[b].y = self.obj_y[p, b]
+
+    def combine_objs_single_pixel(self, p, a, b):
+        ma = self.obj_mass[p, a]
+        mb = self.obj_mass[p, b]
+        if ma == 0 and mb == 0:
+            ma = 1
+            mb = 1
+        mt = ma + mb
+        ma = ma / mt
+        mb = mb / mt
+
+        self.obj_x[p, a] = self.obj_x[p, a] * ma + self.obj_x[p, b] * mb
+        self.obj_y[p, a] = self.obj_y[p, a] * ma + self.obj_y[p, b] * mb
+        self.obj_vx[p, a] = self.obj_vx[p, a] * ma + self.obj_vx[p, b] * mb
+        self.obj_vy[p, a] = self.obj_vy[p, a] * ma + self.obj_vy[p, b] * mb
+
+        self.obj_mass[p, a] = mt
+        self.obj_rad[p, a] = self.obj_rad[p, a] * ma + self.obj_rad[p, b] * mb
+        self.obj_clr[p, a] = self.obj_clr[p, a] * ma + self.obj_clr[p, b] * mb
+
+        self.obj_x[p, b] = -self.obj_rad[p, b]
+        self.obj_y[p, b] = -self.obj_rad[p, b]
+        self.obj_vx[p, b] = 0
+        self.obj_vy[p, b] = 0
+        self.obj_mass[p, b] = 0
+        self.obj_active[p, b] = 0
+
+        if p == self.pixel_view:
+            self.obj_points[a].radius = self.obj_rad[p, a]
+            self.obj_points[a].color = self.obj_clr[p, a]
+            self.obj_points[b].x = self.obj_x[p, b]
+            self.obj_points[b].y = self.obj_y[p, b]
+
     def end_round(self, p, hit_obj):
-        if self.pixel_complete[p] == 1:
+        if self.pixel_active[p, 0] == 0:
             return
 
         pixel_clr = (0, 0, 0) if hit_obj is None else self.obj_clr[p, hit_obj]
@@ -173,11 +229,7 @@ class World:
         py = p // NUM_COLS
         self.grid_rectangles[px][py].color = pixel_clr
 
-        # for i in range(self.num_objs):
-        #    self.obj_points[i].radius = self.obj_rad[i]
-        #    self.obj_points[i].color = self.obj_clr[i]
-
-        self.pixel_complete[p] = 1
+        self.pixel_active[p, :] = 0
 
     def update_pixels(self):
         for obj in range(self.num_objs):
