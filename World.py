@@ -28,7 +28,9 @@ class World:
         self.combine_list = []
 
         self.timer = 0
-
+        self.pixel_clr_sum = np.zeros((self.num_pixels, 3))
+        self.pixel_last_collide = np.ones(self.num_pixels) * TRACK_INDEX
+        self.pixel_num_collide = np.zeros(self.num_pixels)
         self.pixel_view = 0
 
         for col in range(NUM_COLS):
@@ -90,16 +92,19 @@ class World:
                     dist_squared = dx * dx + dy * dy
                     dist_squared = 1.0 if dist_squared == 0 else dist_squared
                     dist = math.sqrt(dist_squared)
+                    sum_rad = self.obj_rad[p, obj] + self.obj_rad[p, other]
 
-                    mag = 1.0 / dist_squared / dist * GRAV_CONST * SIM_SPEED
-                    self.obj_vx[p, obj] += mb * dx * mag
-                    self.obj_vy[p, obj] += mb * dy * mag
-                    self.obj_vx[p, other] -= ma * dx * mag
-                    self.obj_vy[p, other] -= ma * dy * mag
+                    if dist > sum_rad * STOP_GRAV_FACTOR:
+                        mag = 1.0 / dist_squared / dist * GRAV_CONST * SIM_SPEED
+                        self.obj_vx[p, obj] += mb * dx * mag
+                        self.obj_vy[p, obj] += mb * dy * mag
+                        self.obj_vx[p, other] -= ma * dx * mag
+                        self.obj_vy[p, other] -= ma * dy * mag
 
-                    if dist < self.obj_rad[p, obj] + self.obj_rad[p, other]:
+                    if dist < sum_rad:
                         if obj == TRACK_INDEX or other == TRACK_INDEX:
-                            self.end_round(p, obj if obj != TRACK_INDEX else other)
+                            self.gather_pixel(p, obj if obj != TRACK_INDEX else other)
+                            self.combine_list.append([p, TRACK_INDEX, obj if obj != TRACK_INDEX else other])
                         else:
                             self.combine_list.append([p, min(obj, other), max(obj, other)])
 
@@ -109,23 +114,7 @@ class World:
         self.timer += SIM_SPEED
         if self.timer > TIME_LIMIT:
             for p in range(self.num_pixels):
-                self.end_round(p, None)
-
-    def combine(self):
-        len_list = len(self.combine_list)
-        if len_list == 0:
-            return
-
-        for i in range(len_list):
-            p = self.combine_list[i][0]
-            a = self.combine_list[i][1]
-            b = self.combine_list[i][2]
-            if a == b:
-                continue
-
-            self.combine_objs_single_pixel(p, a, b, len_list)
-
-        self.combine_list.clear()
+                self.gather_pixel(p, None)
 
     def combine(self):
         len_list = len(self.combine_list)
@@ -226,19 +215,36 @@ class World:
             self.obj_points[b].x = self.obj_x[p, b]
             self.obj_points[b].y = self.obj_y[p, b]
 
-    def end_round(self, p, hit_obj):
+    def gather_pixel(self, p, hit_obj):
         if self.pixel_active[p, 0] == 0:
             return
-
-        pixel_clr = (0, 0, 0) if hit_obj is None else self.obj_clr[p, hit_obj]
-        time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
-        pixel_clr = [round(pixel_clr[i] * time_const) for i in range(3)]
+        if COLOR_MODE == 1 and hit_obj == self.pixel_last_collide[p]:
+            return
 
         px = p % NUM_COLS
         py = p // NUM_COLS
-        self.grid_rectangles[px][py].color = pixel_clr
 
-        self.pixel_active[p, :] = 0
+        pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[p, hit_obj]
+
+        if COLOR_MODE == 0:
+
+            time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
+            pixel_clr = pixel_clr * time_const
+            self.grid_rectangles[px][py].color = pixel_clr.astype(int)
+
+            self.pixel_active[p, :] = 0
+
+        elif COLOR_MODE == 1:
+            self.pixel_last_collide[p] = hit_obj
+            self.pixel_num_collide[p] += 1
+            num_collide = self.pixel_num_collide[p]
+
+            time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
+            pixel_clr = pixel_clr * time_const
+            # the 6 / pi^2 makes sure this sum converges to 1
+            self.pixel_clr_sum[p] += pixel_clr * 6 / (num_collide * num_collide * PI * PI)
+            self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p]).astype(int)
+
 
     def update_pixels(self):
         for obj in range(self.num_objs):
