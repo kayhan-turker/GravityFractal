@@ -140,15 +140,25 @@ class World:
             if a == b:
                 continue
 
-            self.combine_objs_single_pixel(p, a, b)
+            if a != TRACK_INDEX and b != TRACK_INDEX and INIT_MASS[TRACK_INDEX] == 0.0:
+                self.combine_objs_all_pixels(a, b)
 
-            for j in range(i + 1, len_list):
-                combine_inst = self.combine_list[j]
-                if combine_inst[0] == p:
+                for j in range(i + 1, len_list):
+                    combine_inst = self.combine_list[j]
                     if combine_inst[1] == b:
                         combine_inst[1] = a
                     if combine_inst[2] == b:
                         combine_inst[2] = a
+            else:
+                self.combine_objs_single_pixel(p, a, b)
+
+                for j in range(i + 1, len_list):
+                    combine_inst = self.combine_list[j]
+                    if combine_inst[0] == p:
+                        if combine_inst[1] == b:
+                            combine_inst[1] = a
+                        if combine_inst[2] == b:
+                            combine_inst[2] = a
 
         self.combine_list.clear()
 
