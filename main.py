@@ -29,7 +29,7 @@ def on_mouse_press(x, y, button, modifiers):
     if button == 1 and 0 < x < 2 * SCREEN_WIDTH and 0 < y < SCREEN_HEIGHT:
         click_x = x // GRID_LENGTH % NUM_COLS
         click_y = y // GRID_LENGTH
-        world.pixel_view = click_x + click_y * NUM_COLS
+        world.set_pixel_view(click_x + click_y * NUM_COLS)
 
 
 @window.event

@@ -44,8 +44,10 @@ class World:
                                                  color=self.obj_clr[self.pixel_view, obj].astype(int), batch=grav_batch)
 
     def init_objs(self):
-        self.obj_x = np.tile(INIT_X.copy(), (self.num_pixels, 1))
-        self.obj_y = np.tile(INIT_Y.copy(), (self.num_pixels, 1))
+        self.num_objs = len(INIT_MASS)
+
+        self.obj_x = np.tile(INIT_X.copy()[:self.num_objs], (self.num_pixels, 1))
+        self.obj_y = np.tile(INIT_Y.copy()[:self.num_objs], (self.num_pixels, 1))
 
         for p in range(self.num_pixels):
             px = p % NUM_COLS
@@ -53,14 +55,13 @@ class World:
             self.obj_x[p, TRACK_INDEX] = (px + 0.5) * GRID_LENGTH
             self.obj_y[p, TRACK_INDEX] = (py + 0.5) * GRID_LENGTH
 
-        self.obj_vx = np.tile(INIT_VX.copy(), (self.num_pixels, 1))
-        self.obj_vy = np.tile(INIT_VY.copy(), (self.num_pixels, 1))
+        self.obj_vx = np.tile(INIT_VX.copy()[:self.num_objs], (self.num_pixels, 1))
+        self.obj_vy = np.tile(INIT_VY.copy()[:self.num_objs], (self.num_pixels, 1))
 
-        self.obj_clr = np.tile(INIT_CLR.copy(), (self.num_pixels, 1, 1))
-        self.obj_mass = np.tile(INIT_MASS.copy(), (self.num_pixels, 1))
-        self.obj_rad = np.tile(INIT_RAD.copy(), (self.num_pixels, 1))
+        self.obj_clr = np.tile(INIT_CLR.copy()[:self.num_objs], (self.num_pixels, 1, 1))
+        self.obj_mass = np.tile(INIT_MASS.copy()[:self.num_objs], (self.num_pixels, 1))
+        self.obj_rad = np.tile(INIT_RAD.copy()[:self.num_objs], (self.num_pixels, 1))
 
-        self.num_objs = len(INIT_MASS)
         self.obj_active = np.ones((self.num_pixels, self.num_objs))
 
     def update(self):
@@ -107,10 +108,13 @@ class World:
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
         self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
 
+        self.check_wall_collision()
+
         self.timer += SIM_SPEED
-        if self.timer > TIME_LIMIT:
-            for p in range(self.num_pixels):
-                self.gather_pixel(p, None)
+
+    def check_wall_collision(self):
+        if not WALL_COLLISION:
+            return
 
     def process_combine_list(self):
         len_list = len(self.combine_list)
@@ -125,75 +129,61 @@ class World:
         
                     # replace next objects with new id if collided with something else
                     for j in range(i + 1, len_list):
-                        if combine_all_pixels or self.combine_list[j][0] == p:
-                            self.combine_list[j][1:] = [a if x == b else x for x in self.combine_list[j][1:]]
+                        next_pair = self.combine_list[j]
+                        if combine_all_pixels or next_pair[0] == p:
+                            if next_pair[1] == b or next_pair[2] == b:
+                                self.combine_list[j][1:] = [a if x == b else x for x in next_pair[1:]]
     
             self.combine_list.clear()
 
     def combine_objs_all_pixels(self, a, b):
-        ma = self.obj_mass[:, a]
-        mb = self.obj_mass[:, b]
+        self.combine_obj_into(None, a, b)
+        self.disable_obj(None, b)
+        self.update_obj_draw(a, False, True)
+        self.update_obj_draw(b, True, False)
+
+    def combine_objs_single_pixel(self, p, a, b):
+        self.combine_obj_into(p, a, b)
+        self.disable_obj(p, b)
+        if p == self.pixel_view:
+            self.update_obj_draw(a, False, True)
+            self.update_obj_draw(b, True, False)
+
+    def combine_obj_into(self, p, a, b):
+        i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
+
+        ma = self.obj_mass[i:j, a]
+        mb = self.obj_mass[i:j, b]
         mt = ma + mb
         ma = np.where(mt == 0, 1.0, ma)
         mb = np.where(mt == 0, 1.0, mb)
-        ma = ma / mt
-        mb = mb / mt
+        ra = ma / mt
+        rb = mb / mt
 
-        self.obj_x[:, a] = self.obj_x[:, a] * ma + self.obj_x[:, b] * mb
-        self.obj_y[:, a] = self.obj_y[:, a] * ma + self.obj_y[:, b] * mb
-        self.obj_vx[:, a] = self.obj_vx[:, a] * ma + self.obj_vx[:, b] * mb
-        self.obj_vy[:, a] = self.obj_vy[:, a] * ma + self.obj_vy[:, b] * mb
+        self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
+        self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
+        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
+        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
-        self.obj_mass[:, a] = mt
-        self.obj_rad[:, a] = self.obj_rad[:, a] * ma + self.obj_rad[:, b] * mb
-        ma_clr = np.tile(np.expand_dims(ma, 1), (1, 3))
-        mb_clr = np.tile(np.expand_dims(mb, 1), (1, 3))
-        self.obj_clr[:, a] = self.obj_clr[:, a] * ma_clr + self.obj_clr[:, b] * mb_clr
+        self.obj_mass[i:j, a] = mt
+        self.obj_rad[i:j, a] = self.obj_rad[i:j, a] * ra + self.obj_rad[i:j, b] * rb
+        self.obj_clr[i:j, a] = self.obj_clr[i:j, a] * ra + self.obj_clr[i:j, b] * rb
 
-        self.obj_x[:, b] = -self.obj_rad[:, b]
-        self.obj_y[:, b] = -self.obj_rad[:, b]
-        self.obj_vx[:, b] = 0
-        self.obj_vy[:, b] = 0
-        self.obj_mass[:, b] = 0
-        self.obj_active[:, b] = 0
+    def disable_obj(self, p, obj):
+        i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
+        new_pos = self.obj_rad[i:j, obj]
+        self.obj_x[i:j, obj] = -new_pos
+        self.obj_y[i:j, obj] = -new_pos
+        self.obj_active[i:j, obj] = 0
 
-        p = self.pixel_view
-        self.obj_points[a].radius = self.obj_rad[p, a]
-        self.obj_points[a].color = self.obj_clr[p, a]
-        self.obj_points[b].x = self.obj_x[p, b]
-        self.obj_points[b].y = self.obj_y[p, b]
-
-    def combine_objs_single_pixel(self, p, a, b):
-        ma = self.obj_mass[p, a]
-        mb = self.obj_mass[p, b]
-        if ma == 0 and mb == 0:
-            ma = 1
-            mb = 1
-        mt = ma + mb
-        ma = ma / mt
-        mb = mb / mt
-
-        self.obj_x[p, a] = self.obj_x[p, a] * ma + self.obj_x[p, b] * mb
-        self.obj_y[p, a] = self.obj_y[p, a] * ma + self.obj_y[p, b] * mb
-        self.obj_vx[p, a] = self.obj_vx[p, a] * ma + self.obj_vx[p, b] * mb
-        self.obj_vy[p, a] = self.obj_vy[p, a] * ma + self.obj_vy[p, b] * mb
-
-        self.obj_mass[p, a] = mt
-        self.obj_rad[p, a] = self.obj_rad[p, a] * ma + self.obj_rad[p, b] * mb
-        self.obj_clr[p, a] = self.obj_clr[p, a] * ma + self.obj_clr[p, b] * mb
-
-        self.obj_x[p, b] = -self.obj_rad[p, b]
-        self.obj_y[p, b] = -self.obj_rad[p, b]
-        self.obj_vx[p, b] = 0
-        self.obj_vy[p, b] = 0
-        self.obj_mass[p, b] = 0
-        self.obj_active[p, b] = 0
-
-        if p == self.pixel_view:
-            self.obj_points[a].radius = self.obj_rad[p, a]
-            self.obj_points[a].color = self.obj_clr[p, a].astype(int)
-            self.obj_points[b].x = self.obj_x[p, b]
-            self.obj_points[b].y = self.obj_y[p, b]
+    def update_obj_draw(self, obj, update_pos=True, update_shape=True):
+        pixel = self.pixel_view
+        if update_pos:
+            self.obj_points[obj].x = self.obj_x[pixel, obj] + SCREEN_WIDTH
+            self.obj_points[obj].y = self.obj_y[pixel, obj]
+        if update_shape:
+            self.obj_points[obj].radius = self.obj_rad[pixel, obj]
+            self.obj_points[obj].color = self.obj_clr[pixel, obj].astype(int)
 
     def gather_pixel(self, p, hit_obj):
         if hit_obj == self.pixel_last_collide[p] or self.pixel_num_collide[p] == NUM_BRIGHTNESS_FACTOR:
@@ -213,5 +203,9 @@ class World:
 
     def update_pixels(self):
         for obj in range(self.num_objs):
-            self.obj_points[obj].x = SCREEN_WIDTH + self.obj_x[self.pixel_view, obj]
-            self.obj_points[obj].y = self.obj_y[self.pixel_view, obj]
+            self.update_obj_draw(obj, True, False)
+
+    def set_pixel_view(self, pixel):
+        self.pixel_view = pixel
+        for obj in range(self.num_objs):
+            self.update_obj_draw(obj)
