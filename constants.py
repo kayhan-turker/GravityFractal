@@ -1,7 +1,7 @@
 import numpy as np
 
 # each successive collisions transparency
-COLLISION_BRIGHTNESS_FACTOR = np.array([1.0, 1.0])
+COLLISION_BRIGHTNESS_FACTOR = np.array([1.0, 0.5, 0.25, 0.125, 0.06, 0.03, 0.015, 0.008])
 NUM_BRIGHTNESS_FACTOR = len(COLLISION_BRIGHTNESS_FACTOR)
 
 SCREEN_WIDTH = 480
