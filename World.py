@@ -1,11 +1,12 @@
 from pyglet import shapes
 from init_params import *
+from helper_functions import *
 import numpy as np
 import math
 
 
 class World:
-    def __init__(self, grav_batch, out_batch):
+    def __init__(self, grav_batch, out_batch, ui_batch):
 
         self.obj_x = None
         self.obj_y = None
@@ -23,6 +24,8 @@ class World:
 
         self.grid_rectangles = [[None for _ in range(NUM_ROWS)] for _ in range(NUM_COLS)]
         self.obj_points = [None for _ in range(self.num_objs)]
+        self.grid_border = []
+        self.select_pixel_rect = []
 
         self.combine_list = []
 
@@ -32,6 +35,9 @@ class World:
         self.pixel_num_collide = np.zeros(self.num_pixels, dtype=int)
         self.pixel_view = 0
 
+        self.init_shapes(grav_batch, out_batch, ui_batch)
+
+    def init_shapes(self, grav_batch, out_batch, ui_batch):
         for col in range(NUM_COLS):
             for row in range(NUM_ROWS):
                 self.grid_rectangles[col][row] = shapes.Rectangle(col * GRID_LENGTH, row * GRID_LENGTH,
@@ -42,6 +48,16 @@ class World:
             self.obj_points[obj] = shapes.Circle(SCREEN_WIDTH + self.obj_x[self.pixel_view, obj],
                                                  self.obj_y[self.pixel_view, obj], self.obj_rad[self.pixel_view, obj],
                                                  color=self.obj_clr[self.pixel_view, obj].astype(int), batch=grav_batch)
+
+        if GRID_LENGTH > 7:
+            for col in range(NUM_COLS):
+                for row in range(NUM_ROWS):
+                    extend_with_rectangle_border(self.grid_border, col * GRID_LENGTH, row * GRID_LENGTH,
+                                                 GRID_LENGTH, GRID_LENGTH, 1, (64, 64, 64, 128), ui_batch)
+
+        extend_with_rectangle_border(self.select_pixel_rect, 0, 0, GRID_LENGTH, GRID_LENGTH,
+                                     1, (255, 255, 255, 128), ui_batch)
+        self.set_select_pixel_shape()
 
     def init_objs(self):
         self.num_objs = len(INIT_MASS)
@@ -218,3 +234,9 @@ class World:
         self.pixel_view = pixel
         for obj in range(self.num_objs):
             self.update_obj_draw(obj)
+        self.set_select_pixel_shape()
+
+    def set_select_pixel_shape(self):
+        px = self.pixel_view % NUM_COLS
+        py = self.pixel_view // NUM_COLS
+        set_rectangle_border_pos(self.select_pixel_rect, 0, px * GRID_LENGTH, py * GRID_LENGTH)

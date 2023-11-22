@@ -11,7 +11,7 @@ TRACK_INDEX = 0
 
 GRAV_CONST = 1
 WALL_COLLISION = True
-SIM_SPEED = 1
+SIM_SPEED = 0.1
 
 # each successive collisions transparency
 COLLISION_BRIGHTNESS = np.array([1] + [1 / 2 ** (x + 1) for x in range(0)])
