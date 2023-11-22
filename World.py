@@ -29,7 +29,7 @@ class World:
         self.timer = 0
         self.pixel_clr_sum = np.zeros((self.num_pixels, 3))
         self.pixel_last_collide = np.ones(self.num_pixels) * TRACK_INDEX
-        self.pixel_num_collide = np.zeros(self.num_pixels)
+        self.pixel_num_collide = np.zeros(self.num_pixels, dtype=int)
         self.pixel_view = 0
 
         for col in range(NUM_COLS):
@@ -196,31 +196,20 @@ class World:
             self.obj_points[b].y = self.obj_y[p, b]
 
     def gather_pixel(self, p, hit_obj):
-        if COLOR_MODE == 1 and hit_obj == self.pixel_last_collide[p]:
+        if hit_obj == self.pixel_last_collide[p] or self.pixel_num_collide[p] == NUM_BRIGHTNESS_FACTOR:
             return
+
+        pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[p, hit_obj]
+        time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
+        pixel_clr = pixel_clr * time_const
+        self.pixel_clr_sum[p] += pixel_clr * COLLISION_BRIGHTNESS_FACTOR[self.pixel_num_collide[p]]
 
         px = p % NUM_COLS
         py = p // NUM_COLS
+        self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p]).astype(int)
 
-        pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[p, hit_obj]
-
-        if COLOR_MODE == 0:
-
-            time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
-            pixel_clr = pixel_clr * time_const
-            self.grid_rectangles[px][py].color = pixel_clr.astype(int)
-
-        elif COLOR_MODE == 1:
-            self.pixel_last_collide[p] = hit_obj
-            self.pixel_num_collide[p] += 1
-            num_collide = self.pixel_num_collide[p]
-
-            time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
-            pixel_clr = pixel_clr * time_const
-            # the 6 / pi^2 makes sure this sum converges to 1
-            self.pixel_clr_sum[p] += pixel_clr * 6 / (num_collide * num_collide * PI * PI)
-            self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p]).astype(int)
-
+        self.pixel_last_collide[p] = hit_obj
+        self.pixel_num_collide[p] += 1
 
     def update_pixels(self):
         for obj in range(self.num_objs):

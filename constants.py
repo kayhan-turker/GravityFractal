@@ -1,10 +1,8 @@
+import numpy as np
 
-# 0 = opaque, time dependent brightness
-# 1 = transparent, constant brightness (simulation does not end at collision)
-COLOR_MODE = 1
-
-# below this radius factor, no longer gather collision data
-COLOR_MODE_1_BRIGHTNESS_FACTOR = 0.1
+# each successive collisions transparency
+COLLISION_BRIGHTNESS_FACTOR = np.array([1.0, 1.0])
+NUM_BRIGHTNESS_FACTOR = len(COLLISION_BRIGHTNESS_FACTOR)
 
 SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 480
