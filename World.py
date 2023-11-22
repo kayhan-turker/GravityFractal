@@ -162,11 +162,12 @@ class World:
 
         ma = self.obj_mass[i:j, a]
         mb = self.obj_mass[i:j, b]
+        ma_abs = np.abs(ma)
+        mb_abs = np.abs(mb)
         mt = ma + mb
-        ma = np.where(mt == 0, 1.0, ma)
-        mb = np.where(mt == 0, 1.0, mb)
-        ra = ma / mt
-        rb = mb / mt
+        mt_abs = ma_abs + mb_abs
+        ra = np.where(mt == 0, 0.5, ma_abs / mt_abs)
+        rb = np.where(mt == 0, 0.5, mb_abs / mt_abs)
 
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
@@ -194,13 +195,13 @@ class World:
             self.obj_points[obj].color = self.obj_clr[pixel, obj].astype(int)
 
     def gather_pixel(self, p, hit_obj):
-        if hit_obj == self.pixel_last_collide[p] or self.pixel_num_collide[p] == NUM_BRIGHTNESS_FACTOR:
+        if hit_obj == self.pixel_last_collide[p] or self.pixel_num_collide[p] == NUM_COLLISION_DRAWS:
             return
 
         pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[p, hit_obj]
-        time_const = 1.0 / (self.timer * PIXEL_CONTRAST / 255 + 1)
+        time_const = 1.0 / (self.timer * OUTPUT_CONTRAST / 255 + 1)
         pixel_clr = pixel_clr * time_const
-        self.pixel_clr_sum[p] += pixel_clr * COLLISION_BRIGHTNESS_FACTOR[self.pixel_num_collide[p]]
+        self.pixel_clr_sum[p] += pixel_clr * COLLISION_BRIGHTNESS[self.pixel_num_collide[p]]
 
         px = p % NUM_COLS
         py = p // NUM_COLS
