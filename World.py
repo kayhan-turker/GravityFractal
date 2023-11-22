@@ -79,9 +79,9 @@ class World:
         dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
         dist = np.sqrt(dist_squared)
 
-        mag = self.obj_active.copy()
-        mag = mag[0] * mag[0].reshape(5, 1)
-        mag = mag / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+        active_array = np.expand_dims(self.obj_active.copy(), 2)
+        active_array = active_array * active_array.transpose(0, 2, 1)
+        mag = active_array / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
         mag = mag * np.expand_dims(self.obj_mass, 1)
 
         dvx = mag * dx
@@ -90,11 +90,14 @@ class World:
         self.obj_vx += np.sum(dvx, 2)
         self.obj_vy += np.sum(dvy, 2)
 
+        # negative distance for inactive pairs
+        dist_collide_check = np.where(active_array == 0, -1., dist)
+
         for obj in range(num_objs):
             for other in range(obj + 1, num_objs):
                 sum_rad = self.obj_rad[:, obj] + self.obj_rad[:, other]
                 for p in range(self.num_pixels):
-                    if dist[p, obj, other] < sum_rad[p]:
+                    if 0 <= dist_collide_check[p, obj, other] < sum_rad[p]:
                         if obj == TRACK_INDEX or other == TRACK_INDEX:
                             self.gather_pixel(p, obj if obj != TRACK_INDEX else other)
                             self.combine_list.append([p, TRACK_INDEX, obj if obj != TRACK_INDEX else other])
