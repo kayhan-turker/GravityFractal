@@ -107,14 +107,22 @@ class World:
 
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
         self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
-
         self.check_wall_collision()
 
         self.timer += SIM_SPEED
 
     def check_wall_collision(self):
-        if not WALL_COLLISION:
-            return
+        x = self.obj_x
+        y = self.obj_y
+        if WALL_COLLISION:
+            pass_x = np.where(x > SCREEN_WIDTH, x - SCREEN_WIDTH, np.where(x < 0, x, 0)) * self.obj_active
+            pass_y = np.where(y > SCREEN_HEIGHT, y - SCREEN_HEIGHT, np.where(y < 0, y, 0)) * self.obj_active
+
+            if np.any(pass_x != 0) or np.any(pass_y != 0):
+                self.obj_x -= pass_x
+                self.obj_y -= pass_y
+                self.obj_vx *= np.where(pass_x == 0, 1, -1)
+                self.obj_vy *= np.where(pass_y == 0, 1, -1)
 
     def process_combine_list(self):
         len_list = len(self.combine_list)
