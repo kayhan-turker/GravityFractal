@@ -27,14 +27,14 @@ class World:
         self.grid_border = []
         self.select_pixel_rect = []
 
-        self.combine_list = np.array([])
         self.zero_track_mass = INIT_MASS[self.track_obj] == 0
 
         self.timer = 0
         self.pixel_clr_sum = np.zeros((self.num_pixels, 3))
-        self.pixel_last_collide = np.ones(self.num_pixels) * self.track_obj
-        self.pixel_num_collide = np.zeros(self.num_pixels, dtype=int)
         self.pixel_view = (NUM_ROWS * NUM_COLS - 1) // 2
+
+        self.combine_list = np.array([])
+        self.update_pixel_list = np.array([])
 
         self.init_shapes(grav_batch, out_batch, ui_batch)
 
@@ -84,7 +84,8 @@ class World:
     def update(self):
         self.simulate()
         self.process_combine_list()
-        self.update_pixels()
+        self.draw_update()
+        self.timer += SIM_SPEED
 
     def simulate(self):
         num_objs = self.num_objs
@@ -106,10 +107,12 @@ class World:
         sum_rad = np.expand_dims(self.obj_rad, 2)
         sum_rad = sum_rad + sum_rad.transpose(0, 2, 1)
         collided_objs = (dist < sum_rad) * active_array
+        # remove diagonal (self collision doesn't count)
         collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = 0
 
         # convert collided to list to combine
         self.combine_list = collided_objs.copy()
+        # remove lower left triangle of matrix, to not repeat entries
         self.combine_list[:, np.tri(self.num_objs, k=0, dtype=bool)] = 0
         self.combine_list = np.column_stack(np.where(self.combine_list))
 
@@ -121,35 +124,31 @@ class World:
         self.obj_vx += np.sum(mag * dx, 2)
         self.obj_vy += np.sum(mag * dy, 2)
 
-        for obj in range(num_objs):
-            for other in range(obj + 1, num_objs):
-                for p in range(self.num_pixels):
-                    if collided_objs[p, obj, other]:
+        # tracker collisions
+        hit_obj = collided_objs[:, self.track_obj]
+        hit_clr = np.tile(np.expand_dims(hit_obj, 2), (1, 1, 3)) * self.obj_clr
+        # add all collided objects colors
+        hit_clr = np.sum(hit_clr, 1)
+        hit_clr *= TRANSPARENCY / (self.timer * OUTPUT_CONTRAST / 255 + 1)
+        self.pixel_clr_sum += hit_clr
 
-                        if obj == self.track_obj or other == self.track_obj:
+        # get list of pixels to update
+        self.update_pixel_list = np.where(np.sum(hit_obj, 1) != 0)[0]
 
-                            hit_obj = obj if obj != self.track_obj else other
-
-                            if hit_obj != self.pixel_last_collide[p] and self.pixel_num_collide[p] != NUM_COLLISION_DRAWS:
-
-                                pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[
-                                    p, hit_obj]
-                                time_const = 1.0 / (self.timer * OUTPUT_CONTRAST / 255 + 1)
-                                pixel_clr = pixel_clr * time_const
-                                self.pixel_clr_sum[p] += pixel_clr * COLLISION_BRIGHTNESS[self.pixel_num_collide[p]]
-
-                                px = p % NUM_COLS
-                                py = p // NUM_COLS
-                                self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p]).astype(int)
-
-                                self.pixel_last_collide[p] = hit_obj
-                                self.pixel_num_collide[p] += 1
-
+        # update position
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
         self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
         self.check_wall_collision()
 
-        self.timer += SIM_SPEED
+    def process_update_pixel_list(self):
+        len_list = len(self.update_pixel_list)
+        if len_list == 0:
+            return
+
+        for p in self.update_pixel_list:
+            px = p.item() % NUM_COLS
+            py = p.item() // NUM_COLS
+            self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p.item()]).astype(int)
 
     def check_wall_collision(self):
         x = self.obj_x
@@ -229,6 +228,13 @@ class World:
         self.obj_y[i:j, obj] = -new_pos
         self.obj_active[i:j, obj] = 0
 
+    def draw_update(self):
+        # update pixel colors
+        self.process_update_pixel_list()
+        # update object positions
+        for obj in range(self.num_objs):
+            self.update_obj_draw(obj, True, False)
+
     def update_obj_draw(self, obj, update_pos=True, update_shape=True):
         pixel = self.pixel_view
         if update_pos:
@@ -237,10 +243,6 @@ class World:
         if update_shape:
             self.obj_points[obj].radius = self.obj_rad[pixel, obj]
             self.obj_points[obj].color = self.obj_clr[pixel, obj].astype(int)
-
-    def update_pixels(self):
-        for obj in range(self.num_objs):
-            self.update_obj_draw(obj, True, False)
 
     def set_pixel_view(self, pixel):
         self.pixel_view = pixel

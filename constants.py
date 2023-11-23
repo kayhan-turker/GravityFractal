@@ -1,7 +1,7 @@
 
 import numpy as np
 
-GRID_LENGTH = 4
+GRID_LENGTH = 120
 SCREEN_WIDTH = 480 - GRID_LENGTH
 SCREEN_HEIGHT = 480 - GRID_LENGTH
 
@@ -13,7 +13,6 @@ WALL_COLLISION = True
 SIM_SPEED = 1
 
 # each successive collisions transparency
-COLLISION_BRIGHTNESS = np.array([] + [0.25, 0.25, 0.25, 0.25] + 0 * [1 / 2 ** (x + 1) for x in range(10)])
-NUM_COLLISION_DRAWS = len(COLLISION_BRIGHTNESS)
 OUTPUT_CONTRAST = 0.2
 MIN_GRID_LENGTH = 4
+TRANSPARENCY = 0.5
