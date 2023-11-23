@@ -49,15 +49,35 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
         world.set_pixel_view(click_x + click_y * NUM_COLS)
 
 
+def check_move_pixel(symbol):
+    if symbol == pyglet.window.key.LEFT:
+        px = max(world.pixel_view % NUM_COLS - 1, 0)
+        py = world.pixel_view // NUM_ROWS
+        world.set_pixel_view(px + py * NUM_COLS)
+    if symbol == pyglet.window.key.RIGHT:
+        px = min(world.pixel_view % NUM_COLS + 1, NUM_COLS)
+        py = world.pixel_view // NUM_ROWS
+        world.set_pixel_view(px + py * NUM_COLS)
+    if symbol == pyglet.window.key.DOWN:
+        px = world.pixel_view % NUM_COLS
+        py = max(world.pixel_view // NUM_ROWS - 1, 0)
+        world.set_pixel_view(px + py * NUM_COLS)
+    if symbol == pyglet.window.key.UP:
+        px = world.pixel_view % NUM_COLS
+        py = min(world.pixel_view // NUM_ROWS + 1, NUM_ROWS)
+        world.set_pixel_view(px + py * NUM_COLS)
+
+
 @window.event
 def on_key_press(symbol, modifiers):
     global clear_mode, ui_grid
+    check_move_pixel(symbol)
+
     if symbol == pyglet.window.key._1:
         ui_grid = not ui_grid
     if symbol == pyglet.window.key._2:
         window.clear()
         clear_mode = not clear_mode
-
 
 pyglet.clock.schedule_interval(update, 1 / 60.0)
 pyglet.app.run()

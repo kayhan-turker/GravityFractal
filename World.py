@@ -34,7 +34,7 @@ class World:
         self.pixel_clr_sum = np.zeros((self.num_pixels, 3))
         self.pixel_last_collide = np.ones(self.num_pixels) * self.track_obj
         self.pixel_num_collide = np.zeros(self.num_pixels, dtype=int)
-        self.pixel_view = 0
+        self.pixel_view = (NUM_ROWS * NUM_COLS - 1) // 2
 
         self.init_shapes(grav_batch, out_batch, ui_batch)
 
@@ -50,7 +50,7 @@ class World:
                                                  self.obj_y[self.pixel_view, obj], self.obj_rad[self.pixel_view, obj],
                                                  color=self.obj_clr[self.pixel_view, obj].astype(int), batch=grav_batch)
 
-        if GRID_LENGTH > 7:
+        if GRID_LENGTH >= MIN_GRID_LENGTH:
             for col in range(NUM_COLS):
                 for row in range(NUM_ROWS):
                     extend_with_rectangle_border(self.grid_border, col * GRID_LENGTH, row * GRID_LENGTH,
@@ -194,8 +194,7 @@ class World:
                 # check where ever combinations are being done
                 if p_next == p or combine_for_all_pixels:
                     if a_next == b or b_next == b:
-                        self.combine_list[j, 1:] = [a if x == b else a_next for x in self.combine_list[j][1:]]
-                        #self.combine_list[j, 1:] = np.where(self.combine_list[j, 1:] == b, a, self.combine_list[j, 1:])
+                        self.combine_list[j, 1:][self.combine_list[j, 1:] == b] = a     # todo remove for loops
 
         self.combine_list = np.array([])
 
@@ -208,18 +207,31 @@ class World:
         mb_abs = np.abs(mb)
         mt = ma + mb
         mt_abs = ma_abs + mb_abs
-        ra = np.where(mt == 0, 0.5, ma_abs / mt_abs)
-        rb = np.where(mt == 0, 0.5, mb_abs / mt_abs)
+        ra = np.where(mt == 0, 0.5, ma / mt)
+        rb = np.where(mt == 0, 0.5, mb / mt)
+        ra_abs = np.where(mt == 0, 0.5, ma_abs / mt_abs)
+        rb_abs = np.where(mt == 0, 0.5, mb_abs / mt_abs)
+
+
+        if p == self.pixel_view:
+            print("--------------------------")
+            print(a, b, self.obj_vx[i:j])
+            print("mass", ra, rb)
+            print("ratio", ra, rb)
 
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
         self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
         self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
+        if p == self.pixel_view:
+            print(a, b, self.obj_vx[i:j])
+
         self.obj_mass[i:j, a] = mt
-        self.obj_rad[i:j, a] = self.obj_rad[i:j, a] * ra + self.obj_rad[i:j, b] * rb
-        self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra[:, np.newaxis] +
-                                self.obj_clr[i:j, b] * rb[:, np.newaxis])
+        self.obj_rad[i:j, a] = self.obj_rad[i:j, a] * ra_abs + self.obj_rad[i:j, b] * rb_abs
+        self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, np.newaxis] +
+                                self.obj_clr[i:j, b] * rb_abs[:, np.newaxis])
+
 
     def disable_obj(self, p, obj):
         i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
@@ -246,6 +258,7 @@ class World:
         for obj in range(self.num_objs):
             self.update_obj_draw(obj)
         self.set_select_pixel_shape()
+        print("PIXEL", self.pixel_view, self.pixel_view % NUM_COLS, self.pixel_view // NUM_COLS)
 
     def set_select_pixel_shape(self):
         px = self.pixel_view % NUM_COLS
