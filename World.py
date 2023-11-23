@@ -174,9 +174,6 @@ class World:
             if a == b:
                 continue
 
-            if p == 86:
-                print(p, a, b)
-
             # combine (for all pixels if pixel doesnt change outcome)
             combine_for_all_pixels = self.zero_track_mass and a != self.track_obj and b != self.track_obj
             p_range = None if combine_for_all_pixels else p
@@ -189,7 +186,7 @@ class World:
             # set new track object if it combined
             if a == self.track_obj or b == self.track_obj:
                 self.track_obj = a
-                self.zero_track_mass = self.zero_track_mass and self.obj_mass[self.track_obj] == 0
+                self.zero_track_mass = self.zero_track_mass and self.obj_mass[p, self.track_obj] == 0
 
             # replace next pairs with new id if collided with something else
             for j in range(i + 1, num_pairs):
@@ -214,27 +211,13 @@ class World:
         ra = np.where(mt == 0, 0.5, ma_abs / mt_abs)
         rb = np.where(mt == 0, 0.5, mb_abs / mt_abs)
 
-        if i == 86:
-            print("====================")
-            print("x", self.obj_x[i:j, a], ra, self.obj_x[i:j, b], rb)
-            print("y", self.obj_y[i:j, a], ra, self.obj_y[i:j, b], rb)
-
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
         self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
         self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
-        if i == 86:
-            print("")
-            print("x2", self.obj_x[i:j, a], ra, self.obj_x[i:j, b], rb)
-            print("y2", self.obj_y[i:j, a], ra, self.obj_y[i:j, b], rb)
-            print("====================")
-
         self.obj_mass[i:j, a] = mt
         self.obj_rad[i:j, a] = self.obj_rad[i:j, a] * ra + self.obj_rad[i:j, b] * rb
-        #print (self.obj_clr[i:j, a], ra)
-        #print (self.obj_clr[i:j, a].shape, ra.shape)
-        #print (self.obj_clr[i:j, a].shape, ra[:, np.newaxis].shape)
         self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra[:, np.newaxis] +
                                 self.obj_clr[i:j, b] * rb[:, np.newaxis])
 

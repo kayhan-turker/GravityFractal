@@ -15,4 +15,3 @@ SIM_SPEED = 4
 COLLISION_BRIGHTNESS = np.array([1] + [1 / 2 ** (x + 1) for x in range(0)])
 NUM_COLLISION_DRAWS = len(COLLISION_BRIGHTNESS)
 OUTPUT_CONTRAST = 0.1
-UI_GRID = False
