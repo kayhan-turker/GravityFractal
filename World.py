@@ -7,7 +7,6 @@ import math
 
 class World:
     def __init__(self, grav_batch, out_batch, ui_batch):
-
         self.obj_x = None
         self.obj_y = None
         self.obj_vx = None
@@ -19,6 +18,7 @@ class World:
 
         self.num_pixels = NUM_COLS * NUM_ROWS
         self.num_objs = None
+        self.track_obj = 0
 
         self.init_objs()
 
@@ -27,11 +27,12 @@ class World:
         self.grid_border = []
         self.select_pixel_rect = []
 
-        self.combine_list = []
+        self.combine_list = np.array([])
+        self.zero_track_mass = INIT_MASS[self.track_obj] == 0
 
         self.timer = 0
         self.pixel_clr_sum = np.zeros((self.num_pixels, 3))
-        self.pixel_last_collide = np.ones(self.num_pixels) * TRACK_INDEX
+        self.pixel_last_collide = np.ones(self.num_pixels) * self.track_obj
         self.pixel_num_collide = np.zeros(self.num_pixels, dtype=int)
         self.pixel_view = 0
 
@@ -68,8 +69,8 @@ class World:
         for p in range(self.num_pixels):
             px = p % NUM_COLS
             py = p // NUM_COLS
-            self.obj_x[p, TRACK_INDEX] = (px + 0.5) * GRID_LENGTH
-            self.obj_y[p, TRACK_INDEX] = (py + 0.5) * GRID_LENGTH
+            self.obj_x[p, self.track_obj] = (px + 0.5) * GRID_LENGTH
+            self.obj_y[p, self.track_obj] = (py + 0.5) * GRID_LENGTH
 
         self.obj_vx = np.tile(INIT_VX.copy()[:self.num_objs], (self.num_pixels, 1))
         self.obj_vy = np.tile(INIT_VY.copy()[:self.num_objs], (self.num_pixels, 1))
@@ -88,6 +89,7 @@ class World:
     def simulate(self):
         num_objs = self.num_objs
 
+        # get distance matrix
         dx = np.tile(np.expand_dims(self.obj_x.copy(), 2), (1, 1, num_objs))
         dy = np.tile(np.expand_dims(self.obj_y.copy(), 2), (1, 1, num_objs))
         dx = dx.transpose((0, 2, 1)) - dx
@@ -96,30 +98,52 @@ class World:
         dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
         dist = np.sqrt(dist_squared)
 
+        # get active
         active_array = np.expand_dims(self.obj_active.copy(), 2)
         active_array = active_array * active_array.transpose(0, 2, 1)
-        mag = active_array / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+
+        # check if active objects collided
+        sum_rad = np.expand_dims(self.obj_rad, 2)
+        sum_rad = sum_rad + sum_rad.transpose(0, 2, 1)
+        collided_objs = (dist < sum_rad) * active_array
+        collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = 0
+
+        # convert collided to list to combine
+        self.combine_list = collided_objs.copy()
+        self.combine_list[:, np.tri(self.num_objs, k=0, dtype=bool)] = 0
+        self.combine_list = np.column_stack(np.where(self.combine_list))
+
+        # get gravity force (only if active toward objs not collided with)
+        mag = active_array * (1 - collided_objs) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
         mag = mag * np.expand_dims(self.obj_mass, 1)
 
-        dvx = mag * dx
-        dvy = mag * dy
-
-        self.obj_vx += np.sum(dvx, 2)
-        self.obj_vy += np.sum(dvy, 2)
-
-        # negative distance for inactive pairs
-        dist_collide_check = np.where(active_array == 0, -1., dist)
+        # add to velocity
+        self.obj_vx += np.sum(mag * dx, 2)
+        self.obj_vy += np.sum(mag * dy, 2)
 
         for obj in range(num_objs):
             for other in range(obj + 1, num_objs):
-                sum_rad = self.obj_rad[:, obj] + self.obj_rad[:, other]
                 for p in range(self.num_pixels):
-                    if 0 <= dist_collide_check[p, obj, other] < sum_rad[p]:
-                        if obj == TRACK_INDEX or other == TRACK_INDEX:
-                            self.gather_pixel(p, obj if obj != TRACK_INDEX else other)
-                            self.combine_list.append([p, TRACK_INDEX, obj if obj != TRACK_INDEX else other])
-                        else:
-                            self.combine_list.append([p, min(obj, other), max(obj, other)])
+                    if collided_objs[p, obj, other]:
+
+                        if obj == self.track_obj or other == self.track_obj:
+
+                            hit_obj = obj if obj != self.track_obj else other
+
+                            if hit_obj != self.pixel_last_collide[p] and self.pixel_num_collide[p] != NUM_COLLISION_DRAWS:
+
+                                pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[
+                                    p, hit_obj]
+                                time_const = 1.0 / (self.timer * OUTPUT_CONTRAST / 255 + 1)
+                                pixel_clr = pixel_clr * time_const
+                                self.pixel_clr_sum[p] += pixel_clr * COLLISION_BRIGHTNESS[self.pixel_num_collide[p]]
+
+                                px = p % NUM_COLS
+                                py = p // NUM_COLS
+                                self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p]).astype(int)
+
+                                self.pixel_last_collide[p] = hit_obj
+                                self.pixel_num_collide[p] += 1
 
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
         self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
@@ -141,37 +165,42 @@ class World:
                 self.obj_vy *= np.where(pass_y == 0, 1, -1)
 
     def process_combine_list(self):
-        len_list = len(self.combine_list)
-        if len_list != 0:
-            for i in range(len_list):
-                p, a, b = self.combine_list[i]
-                if a != b:
-                    # combine (for all pixels if pixel doesnt change outcome)
-                    combine_all_pixels = a != TRACK_INDEX and b != TRACK_INDEX and INIT_MASS[TRACK_INDEX] == 0.0
-                    self.combine_objs_all_pixels(a, b) if combine_all_pixels else (
-                        self.combine_objs_single_pixel(p, a, b))
-        
-                    # replace next objects with new id if collided with something else
-                    for j in range(i + 1, len_list):
-                        next_pair = self.combine_list[j]
-                        if combine_all_pixels or next_pair[0] == p:
-                            if next_pair[1] == b or next_pair[2] == b:
-                                self.combine_list[j][1:] = [a if x == b else x for x in next_pair[1:]]
-    
-            self.combine_list.clear()
+        num_pairs = self.combine_list.shape[0]
+        if num_pairs == 0:
+            return
 
-    def combine_objs_all_pixels(self, a, b):
-        self.combine_obj_into(None, a, b)
-        self.disable_obj(None, b)
-        self.update_obj_draw(a, False, True)
-        self.update_obj_draw(b, True, False)
+        for i in range(num_pairs):
+            p, a, b = tuple(self.combine_list[i])
+            if a == b:
+                continue
 
-    def combine_objs_single_pixel(self, p, a, b):
-        self.combine_obj_into(p, a, b)
-        self.disable_obj(p, b)
-        if p == self.pixel_view:
-            self.update_obj_draw(a, False, True)
-            self.update_obj_draw(b, True, False)
+            if p == 86:
+                print(p, a, b)
+
+            # combine (for all pixels if pixel doesnt change outcome)
+            combine_for_all_pixels = self.zero_track_mass and a != self.track_obj and b != self.track_obj
+            p_range = None if combine_for_all_pixels else p
+            self.combine_obj_into(p_range, a, b)
+            self.disable_obj(p_range, b)
+            if p_range == self.pixel_view or p_range is None:
+                self.update_obj_draw(a, False, True)
+                self.update_obj_draw(b, True, False)
+
+            # set new track object if it combined
+            if a == self.track_obj or b == self.track_obj:
+                self.track_obj = a
+                self.zero_track_mass = self.zero_track_mass and self.obj_mass[self.track_obj] == 0
+
+            # replace next pairs with new id if collided with something else
+            for j in range(i + 1, num_pairs):
+                p_next, a_next, b_next = tuple(self.combine_list[j])
+                # check where ever combinations are being done
+                if p_next == p or combine_for_all_pixels:
+                    if a_next == b or b_next == b:
+                        self.combine_list[j, 1:] = [a if x == b else a_next for x in self.combine_list[j][1:]]
+                        #self.combine_list[j, 1:] = np.where(self.combine_list[j, 1:] == b, a, self.combine_list[j, 1:])
+
+        self.combine_list = np.array([])
 
     def combine_obj_into(self, p, a, b):
         i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
@@ -185,14 +214,29 @@ class World:
         ra = np.where(mt == 0, 0.5, ma_abs / mt_abs)
         rb = np.where(mt == 0, 0.5, mb_abs / mt_abs)
 
+        if i == 86:
+            print("====================")
+            print("x", self.obj_x[i:j, a], ra, self.obj_x[i:j, b], rb)
+            print("y", self.obj_y[i:j, a], ra, self.obj_y[i:j, b], rb)
+
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
         self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
         self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
+        if i == 86:
+            print("")
+            print("x2", self.obj_x[i:j, a], ra, self.obj_x[i:j, b], rb)
+            print("y2", self.obj_y[i:j, a], ra, self.obj_y[i:j, b], rb)
+            print("====================")
+
         self.obj_mass[i:j, a] = mt
         self.obj_rad[i:j, a] = self.obj_rad[i:j, a] * ra + self.obj_rad[i:j, b] * rb
-        self.obj_clr[i:j, a] = self.obj_clr[i:j, a] * ra + self.obj_clr[i:j, b] * rb
+        #print (self.obj_clr[i:j, a], ra)
+        #print (self.obj_clr[i:j, a].shape, ra.shape)
+        #print (self.obj_clr[i:j, a].shape, ra[:, np.newaxis].shape)
+        self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra[:, np.newaxis] +
+                                self.obj_clr[i:j, b] * rb[:, np.newaxis])
 
     def disable_obj(self, p, obj):
         i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
@@ -209,22 +253,6 @@ class World:
         if update_shape:
             self.obj_points[obj].radius = self.obj_rad[pixel, obj]
             self.obj_points[obj].color = self.obj_clr[pixel, obj].astype(int)
-
-    def gather_pixel(self, p, hit_obj):
-        if hit_obj == self.pixel_last_collide[p] or self.pixel_num_collide[p] == NUM_COLLISION_DRAWS:
-            return
-
-        pixel_clr = np.array((0, 0, 0), dtype=np.float16) if hit_obj is None else self.obj_clr[p, hit_obj]
-        time_const = 1.0 / (self.timer * OUTPUT_CONTRAST / 255 + 1)
-        pixel_clr = pixel_clr * time_const
-        self.pixel_clr_sum[p] += pixel_clr * COLLISION_BRIGHTNESS[self.pixel_num_collide[p]]
-
-        px = p % NUM_COLS
-        py = p // NUM_COLS
-        self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p]).astype(int)
-
-        self.pixel_last_collide[p] = hit_obj
-        self.pixel_num_collide[p] += 1
 
     def update_pixels(self):
         for obj in range(self.num_objs):
