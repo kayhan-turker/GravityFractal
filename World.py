@@ -209,29 +209,18 @@ class World:
         mt_abs = ma_abs + mb_abs
         ra = np.where(mt == 0, 0.5, ma / mt)
         rb = np.where(mt == 0, 0.5, mb / mt)
-        ra_abs = np.where(mt == 0, 0.5, ma_abs / mt_abs)
-        rb_abs = np.where(mt == 0, 0.5, mb_abs / mt_abs)
-
-
-        if p == self.pixel_view:
-            print("--------------------------")
-            print(a, b, self.obj_vx[i:j])
-            print("mass", ra, rb)
-            print("ratio", ra, rb)
+        ra_abs = np.where(mt_abs == 0, 0.5, ma_abs / mt_abs)
+        rb_abs = np.where(mt_abs == 0, 0.5, mb_abs / mt_abs)
 
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
         self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
         self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
-        if p == self.pixel_view:
-            print(a, b, self.obj_vx[i:j])
-
         self.obj_mass[i:j, a] = mt
-        self.obj_rad[i:j, a] = self.obj_rad[i:j, a] * ra_abs + self.obj_rad[i:j, b] * rb_abs
+        self.obj_rad[i:j, a] = np.power((np.power(self.obj_rad[i:j, a], 3) + np.power(self.obj_rad[i:j, b], 3)), 1 / 3)
         self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, np.newaxis] +
                                 self.obj_clr[i:j, b] * rb_abs[:, np.newaxis])
-
 
     def disable_obj(self, p, obj):
         i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
@@ -258,7 +247,6 @@ class World:
         for obj in range(self.num_objs):
             self.update_obj_draw(obj)
         self.set_select_pixel_shape()
-        print("PIXEL", self.pixel_view, self.pixel_view % NUM_COLS, self.pixel_view // NUM_COLS)
 
     def set_select_pixel_shape(self):
         px = self.pixel_view % NUM_COLS
