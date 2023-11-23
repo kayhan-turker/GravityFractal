@@ -19,7 +19,8 @@ def on_draw():
     window.clear()
     grav_batch.draw()
     out_batch.draw()
-    ui_batch.draw()
+    if UI_GRID:
+        ui_batch.draw()
     fps_display.draw()
 
 
