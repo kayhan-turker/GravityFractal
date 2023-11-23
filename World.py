@@ -34,7 +34,7 @@ class World:
         self.pixel_view = (NUM_ROWS * NUM_COLS - 1) // 2
 
         self.combine_list = np.array([])
-        self.update_pixel_list = np.array([])
+        self.update_pixel_list = []
 
         self.init_shapes(grav_batch, out_batch, ui_batch)
 
@@ -133,7 +133,7 @@ class World:
         self.pixel_clr_sum += hit_clr
 
         # get list of pixels to update
-        self.update_pixel_list = np.where(np.sum(hit_obj, 1) != 0)[0]
+        self.update_pixel_list.extend(tuple(np.where(np.sum(hit_obj, 1) != 0)[0]))
 
         # update position
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
@@ -141,14 +141,15 @@ class World:
         self.check_wall_collision()
 
     def process_update_pixel_list(self):
-        len_list = len(self.update_pixel_list)
-        if len_list == 0:
+        if self.timer % UPDATE_PIXEL_INTERVAL != 0 or len(self.update_pixel_list) == 0:
             return
 
         for p in self.update_pixel_list:
             px = p.item() % NUM_COLS
             py = p.item() // NUM_COLS
             self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p.item()]).astype(int)
+
+        self.update_pixel_list.clear()
 
     def check_wall_collision(self):
         x = self.obj_x
