@@ -77,7 +77,7 @@ class World:
         self.obj_mass = np.tile(INIT_MASS.copy()[:self.num_objs], (self.num_pixels, 1))
         self.obj_rad = np.tile(INIT_RAD.copy()[:self.num_objs], (self.num_pixels, 1))
 
-        self.obj_active = np.ones((self.num_pixels, self.num_objs))
+        self.obj_active = np.full((self.num_pixels, self.num_objs), True, dtype=bool)
 
     def update(self):
         self.simulate()
@@ -97,22 +97,18 @@ class World:
         self.move_objects()
 
     def get_distance_matrices(self):
-        dx = np.tile(np.expand_dims(self.obj_x.copy(), 2), (1, 1, self.num_objs))
-        dy = np.tile(np.expand_dims(self.obj_y.copy(), 2), (1, 1, self.num_objs))
-        dx = dx.transpose((0, 2, 1)) - dx
-        dy = dy.transpose((0, 2, 1)) - dy
+        dx = self.obj_x[:, None, :] - self.obj_x[:, :, None]
+        dy = self.obj_y[:, None, :] - self.obj_y[:, :, None]
         dist_squared = dx * dx + dy * dy
         dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
         return dx, dy, np.sqrt(dist_squared), dist_squared
 
     def get_active_matrix(self):
-        active_array = np.expand_dims(self.obj_active.copy(), 2)
-        return active_array * active_array.transpose(0, 2, 1)
+        return self.obj_active[:, None, :] & self.obj_active[:, :, None]
 
     def get_collided_object_matrix(self, dist, active_matrix):
-        sum_rad = np.expand_dims(self.obj_rad, 2)
-        sum_rad = sum_rad + sum_rad.transpose(0, 2, 1)
-        collided_objs = (dist < sum_rad) * active_matrix
+        sum_rad = self.obj_rad[:, :, None] + self.obj_rad[:, None, :]
+        collided_objs = (dist < sum_rad) & active_matrix
 
         # remove diagonal (self collision doesn't count)
         collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = 0
