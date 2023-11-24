@@ -28,11 +28,12 @@ class World:
         self.zero_track_mass = INIT_MASS[self.track_obj] == 0
 
         self.timer = 0
-        self.pixel_clr_sum = np.zeros((self.num_pixels, 3))
         self.pixel_view = (NUM_ROWS * NUM_COLS - 1) // 2
 
         self.combine_list = np.array([])
-        self.update_pixel_list = []
+        self.update_pixel_list = np.array([])
+        self.track_collisions = np.array([])
+        self.current_pixel_colors = np.ones((self.num_pixels, 3)) * PIXEL_BACK_CLR[None, :]
 
         self.init_shapes(grav_batch, out_batch, ui_batch)
 
@@ -41,14 +42,14 @@ class World:
             for row in range(NUM_ROWS):
                 self.grid_rectangles[col][row] = shapes.Rectangle(col * GRID_LENGTH, row * GRID_LENGTH,
                                                                   GRID_LENGTH, GRID_LENGTH,
-                                                                  color=(0, 0, 0), batch=out_batch)
+                                                                  color=(tuple(PIXEL_BACK_CLR)), batch=out_batch)
 
         for obj in range(self.num_objs):
             self.obj_points[obj] = shapes.Circle(SCREEN_WIDTH + self.obj_x[self.pixel_view, obj],
                                                  self.obj_y[self.pixel_view, obj], self.obj_rad[self.pixel_view, obj],
                                                  color=self.obj_clr[self.pixel_view, obj].astype(int), batch=grav_batch)
 
-        if GRID_LENGTH >= MIN_GRID_LENGTH:
+        if GRID_LENGTH >= MIN_GRID_DISPLAY_LENGTH:
             for col in range(NUM_COLS):
                 for row in range(NUM_ROWS):
                     extend_with_rectangle_border(self.grid_border, col * GRID_LENGTH, row * GRID_LENGTH,
@@ -86,7 +87,6 @@ class World:
         self.timer += SIM_SPEED
 
     def simulate(self):
-
         dx, dy, dist, dist_squared = self.get_distance_matrices()
         active_matrix = self.get_active_matrix()
         collided_objs = self.get_collided_object_matrix(dist, active_matrix)
@@ -111,7 +111,7 @@ class World:
         collided_objs = (dist < sum_rad) & active_matrix
 
         # remove diagonal (self collision doesn't count)
-        collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = 0
+        collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = False
         return collided_objs
 
     def populate_combine_list(self, collided_objs):
@@ -123,7 +123,7 @@ class World:
 
     def gravitate(self, active_matrix, collided_objs, dx, dy, dist, dist_squared):
         # get gravity force (only if active toward objs not collided with)
-        mag = active_matrix * (1 - collided_objs) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+        mag = (active_matrix * (1 - collided_objs)) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
         mag = mag * np.expand_dims(self.obj_mass, 1)
 
         # add to velocity
@@ -131,28 +131,33 @@ class World:
         self.obj_vy += np.sum(mag * dy, 2)
 
     def collision_to_pixel(self, collided_objs):
-        # get collisions with tracker
-        hit_obj = collided_objs[:, self.track_obj]
-        hit_clr = np.tile(np.expand_dims(hit_obj, 2), (1, 1, 3)) * self.obj_clr
-
-        # add all collided objects colors
-        hit_clr = np.sum(hit_clr, 1)
-        hit_clr *= TRANSPARENCY / (self.timer * OUTPUT_CONTRAST / 255 + 1)
-        self.pixel_clr_sum += hit_clr
-
-        # get list of pixels to update
-        self.update_pixel_list.extend(tuple(np.where(np.sum(hit_obj, 1) != 0)[0]))
+        self.track_collisions = collided_objs[:, self.track_obj]
+        self.update_pixel_list = np.argwhere(np.any(self.track_collisions, 1)).flatten()
 
     def process_update_pixel_list(self):
-        if len(self.update_pixel_list) == 0:
+        num_updates = self.update_pixel_list.shape[0]
+        if num_updates == 0:
             return
 
         for p in self.update_pixel_list:
-            px = p.item() % NUM_COLS
-            py = p.item() // NUM_COLS
-            self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p.item()]).astype(int)
+            px = p % NUM_COLS
+            py = p // NUM_COLS
 
-        self.update_pixel_list.clear()
+            # get total new color from hit objects
+            hit_clr = self.track_collisions[p, :, None] * self.obj_clr[p]
+            hit_clr = np.sum(hit_clr, 0)
+            hit_clr *= PIXEL_TRANSPARENCY / (self.timer * PIXEL_TIME_CONTRAST / 255 + 1)
+
+            # account for background color
+            hit_clr_relative = hit_clr - PIXEL_BACK_CLR
+            current_clr = self.current_pixel_colors[p]
+            new_clr = current_clr + np.where(hit_clr_relative >= 0,
+                                             hit_clr_relative / (255 - PIXEL_BACK_CLR) * (255 - current_clr),
+                                             hit_clr_relative / PIXEL_BACK_CLR * current_clr)
+            new_clr = np.clip(new_clr, 0, 255)
+
+            self.current_pixel_colors[p] = new_clr
+            self.grid_rectangles[px][py].color = tuple(new_clr.astype(int))
 
     def move_objects(self):
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
