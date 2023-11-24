@@ -1,8 +1,6 @@
-from pyglet import shapes
 from init_params import *
 from helper_functions import *
 import numpy as np
-import math
 
 
 class World:
@@ -88,45 +86,59 @@ class World:
         self.timer += SIM_SPEED
 
     def simulate(self):
-        num_objs = self.num_objs
 
-        # get distance matrix
-        dx = np.tile(np.expand_dims(self.obj_x.copy(), 2), (1, 1, num_objs))
-        dy = np.tile(np.expand_dims(self.obj_y.copy(), 2), (1, 1, num_objs))
+        dx, dy, dist, dist_squared = self.get_distance_matrices()
+        active_matrix = self.get_active_matrix()
+        collided_objs = self.get_collided_object_matrix(dist, active_matrix)
+
+        self.populate_combine_list(collided_objs)
+        self.gravitate(active_matrix, collided_objs, dx, dy, dist, dist_squared)
+        self.collision_to_pixel(collided_objs)
+        self.move_objects()
+
+    def get_distance_matrices(self):
+        dx = np.tile(np.expand_dims(self.obj_x.copy(), 2), (1, 1, self.num_objs))
+        dy = np.tile(np.expand_dims(self.obj_y.copy(), 2), (1, 1, self.num_objs))
         dx = dx.transpose((0, 2, 1)) - dx
         dy = dy.transpose((0, 2, 1)) - dy
         dist_squared = dx * dx + dy * dy
         dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
-        dist = np.sqrt(dist_squared)
+        return dx, dy, np.sqrt(dist_squared), dist_squared
 
-        # get active
+    def get_active_matrix(self):
         active_array = np.expand_dims(self.obj_active.copy(), 2)
-        active_array = active_array * active_array.transpose(0, 2, 1)
+        return active_array * active_array.transpose(0, 2, 1)
 
-        # check if active objects collided
+    def get_collided_object_matrix(self, dist, active_matrix):
         sum_rad = np.expand_dims(self.obj_rad, 2)
         sum_rad = sum_rad + sum_rad.transpose(0, 2, 1)
-        collided_objs = (dist < sum_rad) * active_array
+        collided_objs = (dist < sum_rad) * active_matrix
+
         # remove diagonal (self collision doesn't count)
         collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = 0
+        return collided_objs
 
-        # convert collided to list to combine
+    def populate_combine_list(self, collided_objs):
         self.combine_list = collided_objs.copy()
+
         # remove lower left triangle of matrix, to not repeat entries
         self.combine_list[:, np.tri(self.num_objs, k=0, dtype=bool)] = 0
         self.combine_list = np.column_stack(np.where(self.combine_list))
 
+    def gravitate(self, active_matrix, collided_objs, dx, dy, dist, dist_squared):
         # get gravity force (only if active toward objs not collided with)
-        mag = active_array * (1 - collided_objs) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+        mag = active_matrix * (1 - collided_objs) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
         mag = mag * np.expand_dims(self.obj_mass, 1)
 
         # add to velocity
         self.obj_vx += np.sum(mag * dx, 2)
         self.obj_vy += np.sum(mag * dy, 2)
 
-        # tracker collisions
+    def collision_to_pixel(self, collided_objs):
+        # get collisions with tracker
         hit_obj = collided_objs[:, self.track_obj]
         hit_clr = np.tile(np.expand_dims(hit_obj, 2), (1, 1, 3)) * self.obj_clr
+
         # add all collided objects colors
         hit_clr = np.sum(hit_clr, 1)
         hit_clr *= TRANSPARENCY / (self.timer * OUTPUT_CONTRAST / 255 + 1)
@@ -134,11 +146,6 @@ class World:
 
         # get list of pixels to update
         self.update_pixel_list.extend(tuple(np.where(np.sum(hit_obj, 1) != 0)[0]))
-
-        # update position
-        self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
-        self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
-        self.check_wall_collision()
 
     def process_update_pixel_list(self):
         if self.timer % UPDATE_PIXEL_INTERVAL != 0 or len(self.update_pixel_list) == 0:
@@ -150,6 +157,11 @@ class World:
             self.grid_rectangles[px][py].color = (self.pixel_clr_sum[p.item()]).astype(int)
 
         self.update_pixel_list.clear()
+
+    def move_objects(self):
+        self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
+        self.obj_y += self.obj_vy * self.obj_active * SIM_SPEED
+        self.check_wall_collision()
 
     def check_wall_collision(self):
         x = self.obj_x
