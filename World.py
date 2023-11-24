@@ -119,7 +119,7 @@ class World:
 
         # remove lower left triangle of matrix, to not repeat entries
         self.combine_list[:, np.tri(self.num_objs, k=0, dtype=bool)] = 0
-        self.combine_list = np.column_stack(np.where(self.combine_list))
+        self.combine_list = np.argwhere(self.combine_list)
 
     def gravitate(self, active_matrix, collided_objs, dx, dy, dist, dist_squared):
         # get gravity force (only if active toward objs not collided with)
