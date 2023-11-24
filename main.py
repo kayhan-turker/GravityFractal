@@ -10,7 +10,7 @@ grav_batch = pyglet.graphics.Batch()
 ui_batch = pyglet.graphics.Batch()
 
 clear_mode = True
-ui_grid = False
+ui_grid = True
 
 world = World(grav_batch, out_batch, ui_batch)
 fps_display = pyglet.window.FPSDisplay(window=window)

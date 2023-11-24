@@ -144,7 +144,7 @@ class World:
         self.update_pixel_list.extend(tuple(np.where(np.sum(hit_obj, 1) != 0)[0]))
 
     def process_update_pixel_list(self):
-        if self.timer % UPDATE_PIXEL_INTERVAL != 0 or len(self.update_pixel_list) == 0:
+        if len(self.update_pixel_list) == 0:
             return
 
         for p in self.update_pixel_list:
@@ -226,9 +226,10 @@ class World:
         self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
         self.obj_mass[i:j, a] = mt
-        self.obj_rad[i:j, a] = np.power((np.power(self.obj_rad[i:j, a], 3) + np.power(self.obj_rad[i:j, b], 3)), 1 / 3)
-        self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, np.newaxis] +
-                                self.obj_clr[i:j, b] * rb_abs[:, np.newaxis])
+        self.obj_rad[i:j, a] = (self.obj_rad[i:j, a] * ra_abs[:, None] +
+                                self.obj_rad[i:j, b] * rb_abs[:, None])
+        self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, None] +
+                                self.obj_clr[i:j, b] * rb_abs[:, None])
 
     def disable_obj(self, p, obj):
         i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
