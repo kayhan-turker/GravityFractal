@@ -17,6 +17,7 @@ class World:
         self.num_pixels = NUM_COLS * NUM_ROWS
         self.num_objs = None
         self.track_obj = 0
+        self.total_mass = 0
 
         self.init_objs()
 
@@ -75,8 +76,9 @@ class World:
         self.obj_vy = np.tile(INIT_VY.copy()[:self.num_objs], (self.num_pixels, 1))
 
         self.obj_clr = np.tile(INIT_CLR.copy()[:self.num_objs], (self.num_pixels, 1, 1))
-        self.obj_mass = np.tile(INIT_MASS.copy()[:self.num_objs], (self.num_pixels, 1))
         self.obj_rad = np.tile(INIT_RAD.copy()[:self.num_objs], (self.num_pixels, 1))
+        self.obj_mass = np.tile(INIT_MASS.copy()[:self.num_objs], (self.num_pixels, 1))
+        self.total_mass = np.sum(self.obj_mass[0])
 
         self.obj_active = np.full((self.num_pixels, self.num_objs), True, dtype=bool)
 
@@ -140,22 +142,23 @@ class World:
             return
 
         for p in self.update_pixel_list:
-            px = p % NUM_COLS
-            py = p // NUM_COLS
 
             # get total new color from hit objects
-            hit_clr = self.track_collisions[p, :, None] * self.obj_clr[p]
+            hit_clr = self.track_collisions[p, :, None] * (self.obj_clr[p] - PIXEL_BACK_CLR)
+            hit_clr *= self.obj_mass[p, :, None] / self.total_mass
+
             hit_clr = np.sum(hit_clr, 0)
             hit_clr *= PIXEL_TRANSPARENCY / (self.timer * PIXEL_TIME_CONTRAST / 255 + 1)
 
             # account for background color
-            hit_clr_relative = hit_clr - PIXEL_BACK_CLR
             current_clr = self.current_pixel_colors[p]
-            new_clr = current_clr + np.where(hit_clr_relative >= 0,
-                                             hit_clr_relative / (255 - PIXEL_BACK_CLR) * (255 - current_clr),
-                                             hit_clr_relative / PIXEL_BACK_CLR * current_clr)
-            new_clr = np.clip(new_clr, 0, 255)
+            new_clr = current_clr + np.where(hit_clr >= 0,
+                                             hit_clr * (255 - current_clr) / (255 - PIXEL_BACK_CLR),
+                                             hit_clr * current_clr / PIXEL_BACK_CLR)
 
+            # update pixel colors
+            px = p % NUM_COLS
+            py = p // NUM_COLS
             self.current_pixel_colors[p] = new_clr
             self.grid_rectangles[px][py].color = tuple(new_clr.astype(int))
 
@@ -207,7 +210,7 @@ class World:
                 # check where ever combinations are being done
                 if p_next == p or combine_for_all_pixels:
                     if a_next == b or b_next == b:
-                        self.combine_list[j, 1:][self.combine_list[j, 1:] == b] = a     # todo remove for loops
+                        self.combine_list[j, 1:][self.combine_list[j, 1:] == b] = a                          # todo remove for loops
 
         self.combine_list = np.array([])
 
