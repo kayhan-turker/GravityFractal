@@ -35,6 +35,7 @@ class World:
         self.update_pixel_list = np.array([])
         self.track_collisions = np.array([])
         self.current_pixel_colors = np.ones((self.num_pixels, 3)) * PIXEL_BACK_CLR[None, :]
+        self.remaining_hits = np.full(self.num_pixels, MAX_PIXEL_HITS)
 
         self.init_shapes(grav_batch, out_batch, ui_batch)
 
@@ -134,7 +135,7 @@ class World:
 
     def collision_to_pixel(self, collided_objs):
         self.track_collisions = collided_objs[:, self.track_obj]
-        self.update_pixel_list = np.argwhere(np.any(self.track_collisions, 1)).flatten()
+        self.update_pixel_list = np.argwhere(np.any(self.track_collisions * np.sign(self.remaining_hits)[:, None], 1)).flatten()
 
     def process_update_pixel_list(self):
         num_updates = self.update_pixel_list.shape[0]
@@ -160,7 +161,8 @@ class World:
             px = p % NUM_COLS
             py = p // NUM_COLS
             self.current_pixel_colors[p] = new_clr
-            self.grid_rectangles[px][py].color = tuple(new_clr.astype(int))
+            self.grid_rectangles[px][py].color = tuple(np.clip(new_clr.astype(int), 0, 255))
+            self.remaining_hits[p] -= 1
 
     def move_objects(self):
         self.obj_x += self.obj_vx * self.obj_active * SIM_SPEED
@@ -221,19 +223,16 @@ class World:
         mb = self.obj_mass[i:j, b]
         ma_abs = np.abs(ma)
         mb_abs = np.abs(mb)
-        mt = ma + mb
         mt_abs = ma_abs + mb_abs
-        ra = np.where(mt == 0, 0.5, ma / mt)
-        rb = np.where(mt == 0, 0.5, mb / mt)
         ra_abs = np.where(mt_abs == 0, 0.5, ma_abs / mt_abs)
         rb_abs = np.where(mt_abs == 0, 0.5, mb_abs / mt_abs)
 
-        self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra + self.obj_x[i:j, b] * rb
-        self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra + self.obj_y[i:j, b] * rb
-        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
-        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
+        self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra_abs + self.obj_x[i:j, b] * rb_abs
+        self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra_abs + self.obj_y[i:j, b] * rb_abs
+        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra_abs + self.obj_vx[i:j, b] * rb_abs
+        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra_abs + self.obj_vy[i:j, b] * rb_abs
 
-        self.obj_mass[i:j, a] = mt
+        self.obj_mass[i:j, a] = ma + mb
         self.obj_rad[i:j, a] = (self.obj_rad[i:j, a] * ra_abs[:, None] +
                                 self.obj_rad[i:j, b] * rb_abs[:, None])
         self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, None] +
