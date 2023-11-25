@@ -188,7 +188,7 @@ class World:
             return
 
         for i in range(num_pairs):
-            p, a, b = tuple(self.combine_list[i])
+            p, a, b = self.combine_list[i]
             if a == b:
                 continue
 
@@ -206,13 +206,10 @@ class World:
                 self.track_obj = a
                 self.zero_track_mass = self.zero_track_mass and self.obj_mass[p, self.track_obj] == 0
 
-            # replace next pairs with new id if collided with something else
-            for j in range(i + 1, num_pairs):
-                p_next, a_next, b_next = tuple(self.combine_list[j])
-                # check where ever combinations are being done
-                if p_next == p or combine_for_all_pixels:
-                    if a_next == b or b_next == b:
-                        self.combine_list[j, 1:][self.combine_list[j, 1:] == b] = a                          # todo remove for loops
+            check_list = self.combine_list[i + 1:]
+            b_values = check_list[:, 1:] == b
+            p_values = b_values if combine_for_all_pixels else (check_list[:, 0] == p)[:, None]
+            check_list[:, 1:][p_values & b_values] *= a
 
         self.combine_list = np.array([])
 
