@@ -206,6 +206,7 @@ class World:
                 self.track_obj = a
                 self.zero_track_mass = self.zero_track_mass and self.obj_mass[p, self.track_obj] == 0
 
+            # update next values in the list with new indices
             check_list = self.combine_list[i + 1:]
             b_values = check_list[:, 1:] == b
             p_values = b_values if combine_for_all_pixels else (check_list[:, 0] == p)[:, None]
@@ -221,13 +222,15 @@ class World:
         ma_abs = np.abs(ma)
         mb_abs = np.abs(mb)
         mt_abs = ma_abs + mb_abs
+        ra = np.where(mt_abs == 0, 0.5, ma / (ma + mb))
+        rb = np.where(mt_abs == 0, 0.5, mb / (ma + mb))
         ra_abs = np.where(mt_abs == 0, 0.5, ma_abs / mt_abs)
         rb_abs = np.where(mt_abs == 0, 0.5, mb_abs / mt_abs)
 
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra_abs + self.obj_x[i:j, b] * rb_abs
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra_abs + self.obj_y[i:j, b] * rb_abs
-        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra_abs + self.obj_vx[i:j, b] * rb_abs
-        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra_abs + self.obj_vy[i:j, b] * rb_abs
+        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
+        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
 
         self.obj_mass[i:j, a] = ma + mb
         self.obj_rad[i:j, a] = (self.obj_rad[i:j, a] * ra_abs[:, None] +
