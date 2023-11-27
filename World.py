@@ -142,7 +142,7 @@ class World:
         if num_updates == 0:
             return
 
-        for p in self.update_pixel_list:
+        for p in self.update_pixel_list:                                    # TODO REMOVE FOR LOOP?
 
             # get total new color from hit objects
             hit_clr = self.track_collisions[p, :, None] * (self.obj_clr[p] - PIXEL_BACK_CLR)
@@ -150,6 +150,7 @@ class World:
 
             hit_clr = np.sum(hit_clr, 0)
             hit_clr *= PIXEL_TRANSPARENCY / (self.timer * PIXEL_TIME_CONTRAST / 255 + 1)
+            hit_clr *= PIXEL_HIT_TRANSPARENCY[MAX_PIXEL_HITS - self.remaining_hits[p]]
 
             # account for background color
             current_clr = self.current_pixel_colors[p]
@@ -210,7 +211,7 @@ class World:
             check_list = self.combine_list[i + 1:]
             b_values = check_list[:, 1:] == b
             p_values = b_values if combine_for_all_pixels else (check_list[:, 0] == p)[:, None]
-            check_list[:, 1:][p_values & b_values] *= a
+            check_list[:, 1:][p_values & b_values] = a
 
         self.combine_list = np.array([])
 
