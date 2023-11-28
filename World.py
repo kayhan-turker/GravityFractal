@@ -12,6 +12,7 @@ class World:
         self.obj_clr = None
         self.obj_mass = None
         self.obj_rad = None
+        self.obj_free = None
         self.obj_active = None
 
         self.num_pixels = NUM_COLS * NUM_ROWS
@@ -81,6 +82,8 @@ class World:
         self.obj_mass = np.tile(INIT_MASS.copy()[:self.num_objs], (self.num_pixels, 1))
         self.total_mass = np.sum(self.obj_mass[0])
 
+        self.obj_free = np.tile(INIT_FREE.copy()[:self.num_objs], (self.num_pixels, 1))
+
         self.obj_active = np.full((self.num_pixels, self.num_objs), True, dtype=bool)
 
     def update(self):
@@ -96,7 +99,6 @@ class World:
 
         self.populate_combine_list(collided_objs)
         self.gravitate(active_matrix, collided_objs, dx, dy, dist, dist_squared)
-        self.collision_to_pixel(collided_objs)
         self.move_objects()
 
     def get_distance_matrices(self):
@@ -115,6 +117,7 @@ class World:
 
         # remove diagonal (self collision doesn't count)
         collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = False
+        self.track_collisions = collided_objs[:, self.track_obj]
         return collided_objs
 
     def populate_combine_list(self, collided_objs):
@@ -126,27 +129,25 @@ class World:
 
     def gravitate(self, active_matrix, collided_objs, dx, dy, dist, dist_squared):
         # get gravity force (only if active toward objs not collided with)
-        mag = (active_matrix * (1 - collided_objs)) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
-        mag = mag * np.expand_dims(self.obj_mass, 1)
+        mag = (self.obj_free[:, :, None] * active_matrix * (1 - collided_objs)) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+        mag = mag * self.obj_mass[:, :, None]
 
         # add to velocity
         self.obj_vx += np.sum(mag * dx, 2)
         self.obj_vy += np.sum(mag * dy, 2)
 
-    def collision_to_pixel(self, collided_objs):
-        self.track_collisions = collided_objs[:, self.track_obj]
-        self.update_pixel_list = np.argwhere(np.any(self.track_collisions * np.sign(self.remaining_hits)[:, None], 1)).flatten()
-
     def process_update_pixel_list(self):
+        self.update_pixel_list = np.argwhere(np.any(self.track_collisions * self.remaining_hits[:, None], 1)).flatten()
         num_updates = self.update_pixel_list.shape[0]
         if num_updates == 0:
             return
 
-        for p in self.update_pixel_list:                                    # TODO REMOVE FOR LOOP?
+        # get total new color from hit objects (for loop is more efficient)
+        for p in self.update_pixel_list:
 
-            # get total new color from hit objects
             hit_clr = self.track_collisions[p, :, None] * (self.obj_clr[p] - PIXEL_BACK_CLR)
-            hit_clr *= self.obj_mass[p, :, None] / self.total_mass
+            if MASS_TRANSPARENCY:
+                hit_clr *= self.obj_mass[p, :, None] / self.total_mass
 
             hit_clr = np.sum(hit_clr, 0)
             hit_clr *= PIXEL_TRANSPARENCY / (self.timer * PIXEL_TIME_CONTRAST / 255 + 1)
@@ -238,6 +239,8 @@ class World:
                                 self.obj_rad[i:j, b] * rb_abs[:, None])
         self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, None] +
                                 self.obj_clr[i:j, b] * rb_abs[:, None])
+
+        self.obj_free[i:j, a] = 1
 
     def disable_obj(self, p, obj):
         i, j = (p if p is not None else 0, p + 1 if p is not None else self.num_pixels)
