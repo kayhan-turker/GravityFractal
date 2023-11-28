@@ -80,7 +80,7 @@ class World:
         self.obj_clr = np.tile(INIT_CLR.copy()[:self.num_objs], (self.num_pixels, 1, 1))
         self.obj_rad = np.tile(INIT_RAD.copy()[:self.num_objs], (self.num_pixels, 1))
         self.obj_mass = np.tile(INIT_MASS.copy()[:self.num_objs], (self.num_pixels, 1))
-        self.total_mass = np.sum(self.obj_mass[0])
+        self.total_mass = np.sum(np.abs(self.obj_mass[0]))
 
         self.obj_free = np.tile(INIT_FREE.copy()[:self.num_objs], (self.num_pixels, 1))
 
@@ -130,7 +130,7 @@ class World:
     def gravitate(self, active_matrix, collided_objs, dx, dy, dist, dist_squared):
         # get gravity force (only if active toward objs not collided with)
         mag = (self.obj_free[:, :, None] * active_matrix * (1 - collided_objs)) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
-        mag = mag * self.obj_mass[:, :, None]
+        mag = mag * np.expand_dims(self.obj_mass, 1)
 
         # add to velocity
         self.obj_vx += np.sum(mag * dx, 2)
@@ -224,15 +224,13 @@ class World:
         ma_abs = np.abs(ma)
         mb_abs = np.abs(mb)
         mt_abs = ma_abs + mb_abs
-        ra = np.where(mt_abs == 0, 0.5, ma / (ma + mb))
-        rb = np.where(mt_abs == 0, 0.5, mb / (ma + mb))
         ra_abs = np.where(mt_abs == 0, 0.5, ma_abs / mt_abs)
         rb_abs = np.where(mt_abs == 0, 0.5, mb_abs / mt_abs)
 
         self.obj_x[i:j, a] = self.obj_x[i:j, a] * ra_abs + self.obj_x[i:j, b] * rb_abs
         self.obj_y[i:j, a] = self.obj_y[i:j, a] * ra_abs + self.obj_y[i:j, b] * rb_abs
-        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra + self.obj_vx[i:j, b] * rb
-        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra + self.obj_vy[i:j, b] * rb
+        self.obj_vx[i:j, a] = self.obj_vx[i:j, a] * ra_abs + self.obj_vx[i:j, b] * rb_abs
+        self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra_abs + self.obj_vy[i:j, b] * rb_abs
 
         self.obj_mass[i:j, a] = ma + mb
         self.obj_rad[i:j, a] = (self.obj_rad[i:j, a] * ra_abs[:, None] +
