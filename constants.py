@@ -1,26 +1,49 @@
-
 import numpy as np
 
-GRID_LENGTH = 1
+GRID_LENGTH = 3
 SCREEN_WIDTH = 480 - GRID_LENGTH
 SCREEN_HEIGHT = 480 - GRID_LENGTH
 
 NUM_COLS = SCREEN_WIDTH // GRID_LENGTH
 NUM_ROWS = SCREEN_HEIGHT // GRID_LENGTH
 
-GRAV_CONST = 1
+GRAV_CONST = 1.0
 WALL_COLLISION = True
-SIM_SPEED = 1
+SIM_SPEED = 0.1
+
+GRAV_MATRIX_MODE = False
+GRAV_MATRIX = np.array([[0, 1, 1, 1, 1],
+                        [0, 0, -1, 0, 1],
+                        [0, 1, 0, -1, 0],
+                        [0, 0, 1, 0, -1],
+                        [0, -1, 0, 1, 0]], dtype=np.float16) * GRAV_CONST
+
+# 0 = average, 1 = linear, 2 = cubic
+RADIUS_ADDITION_MODE = 2
+
+TIMELAPSE_ENABLED = True
+TIMELAPSE_FRAMES = 20
+IMG_SAVE_PATH = "out/"
 
 MIN_GRID_DISPLAY_LENGTH = 4
 
-PIXEL_TRANSPARENCY = 4.0
+# == PIXEL COLOR SETTINGS ====================================== #
+
+PIXEL_BACK_CLR = np.array((128, 128, 128))
+
+# 0 = object decided, 1 = angle decided
+HUE_MODE = 0
+# 0 = time decided, 1 = speed decided
+VALUE_MODE = 0
+
+START_PIXEL_TRANSPARENCY = 1.0
 PIXEL_TIME_CONTRAST = 0.1
-MASS_TRANSPARENCY = True
+MASS_WEIGHTED_TRANSPARENCY = False
 PIXEL_HIT_TRANSPARENCY = np.array([1.0, 0.5, 0.25, 0.125])
+
 MAX_PIXEL_HITS = len(PIXEL_HIT_TRANSPARENCY)
 
-PIXEL_BACK_CLR = np.array((150, 150, 150))
+# == COLOR CONSTANTS =========================================== #
 
 CLR_WHITE = np.array((1.0, 1.0, 1.0), dtype=np.float16) * 255
 CLR_BLACK = np.array((0.0, 0.0, 0.0), dtype=np.float16) * 255

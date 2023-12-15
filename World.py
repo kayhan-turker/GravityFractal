@@ -1,6 +1,13 @@
+import colorsys
+import math
+
+import pyglet
+import datetime
 from init_params import *
 from helper_functions import *
 import numpy as np
+import os
+from PIL import Image
 
 
 class World:
@@ -17,7 +24,7 @@ class World:
 
         self.num_pixels = NUM_COLS * NUM_ROWS
         self.num_objs = None
-        self.track_obj = 0
+        self.tracker_index = 0
         self.total_mass = 0
 
         self.init_objs()
@@ -27,18 +34,26 @@ class World:
         self.grid_border = []
         self.select_pixel_rect = []
 
-        self.zero_track_mass = INIT_MASS[self.track_obj] == 0
+        self.zero_track_mass = INIT_MASS[self.tracker_index] == 0
 
-        self.timer = 0
+        self.timer = int(0)
         self.pixel_view = (NUM_ROWS * NUM_COLS - 1) // 2
 
         self.combine_list = np.array([])
         self.update_pixel_list = np.array([])
-        self.track_collisions = np.array([])
+
+        self.tracker_collisions = np.array([])
         self.current_pixel_colors = np.ones((self.num_pixels, 3)) * PIXEL_BACK_CLR[None, :]
         self.remaining_hits = np.full(self.num_pixels, MAX_PIXEL_HITS)
+        self.dx_matrix = np.array([])
+        self.dy_matrix = np.array([])
 
         self.init_shapes(grav_batch, out_batch, ui_batch)
+
+        self.start_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        out_path = IMG_SAVE_PATH + self.start_time
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
 
     def init_shapes(self, grav_batch, out_batch, ui_batch):
         for col in range(NUM_COLS):
@@ -71,8 +86,8 @@ class World:
         for p in range(self.num_pixels):
             px = p % NUM_COLS
             py = p // NUM_COLS
-            self.obj_x[p, self.track_obj] = (px + 0.5) * GRID_LENGTH
-            self.obj_y[p, self.track_obj] = (py + 0.5) * GRID_LENGTH
+            self.obj_x[p, self.tracker_index] = (px + 0.5) * GRID_LENGTH
+            self.obj_y[p, self.tracker_index] = (py + 0.5) * GRID_LENGTH
 
         self.obj_vx = np.tile(INIT_VX.copy()[:self.num_objs], (self.num_pixels, 1))
         self.obj_vy = np.tile(INIT_VY.copy()[:self.num_objs], (self.num_pixels, 1))
@@ -88,25 +103,26 @@ class World:
 
     def update(self):
         self.simulate()
+        self.draw_update()                      # todo was it okay to move this before combine list???
         self.process_combine_list()
-        self.draw_update()
+        self.timelapse_update()
         self.timer += SIM_SPEED
 
     def simulate(self):
-        dx, dy, dist, dist_squared = self.get_distance_matrices()
+        dist, dist_squared = self.get_distance_matrices()
         active_matrix = self.get_active_matrix()
         collided_objs = self.get_collided_object_matrix(dist, active_matrix)
 
         self.populate_combine_list(collided_objs)
-        self.gravitate(active_matrix, collided_objs, dx, dy, dist, dist_squared)
+        self.gravitate(active_matrix, collided_objs, dist, dist_squared)
         self.move_objects()
 
     def get_distance_matrices(self):
-        dx = self.obj_x[:, None, :] - self.obj_x[:, :, None]
-        dy = self.obj_y[:, None, :] - self.obj_y[:, :, None]
-        dist_squared = dx * dx + dy * dy
+        self.dx_matrix = self.obj_x[:, None, :] - self.obj_x[:, :, None]
+        self.dy_matrix = self.obj_y[:, None, :] - self.obj_y[:, :, None]
+        dist_squared = self.dx_matrix * self.dx_matrix + self.dy_matrix * self.dy_matrix
         dist_squared = np.where(dist_squared == 0, 1.0, dist_squared)
-        return dx, dy, np.sqrt(dist_squared), dist_squared
+        return np.sqrt(dist_squared), dist_squared
 
     def get_active_matrix(self):
         return self.obj_active[:, None, :] & self.obj_active[:, :, None]
@@ -117,7 +133,7 @@ class World:
 
         # remove diagonal (self collision doesn't count)
         collided_objs[:, np.tril_indices(self.num_objs, k=0), np.tril_indices(self.num_objs, k=0)] = False
-        self.track_collisions = collided_objs[:, self.track_obj]
+        self.tracker_collisions = collided_objs[:, self.tracker_index]
         return collided_objs
 
     def populate_combine_list(self, collided_objs):
@@ -127,30 +143,47 @@ class World:
         self.combine_list[:, np.tri(self.num_objs, k=0, dtype=bool)] = 0
         self.combine_list = np.argwhere(self.combine_list)
 
-    def gravitate(self, active_matrix, collided_objs, dx, dy, dist, dist_squared):
+    def gravitate(self, active_matrix, collided_objs, dist, dist_squared):
         # get gravity force (only if active toward objs not collided with)
-        mag = (self.obj_free[:, :, None] * active_matrix * (1 - collided_objs)) / (dist_squared * dist) * GRAV_CONST * SIM_SPEED
+        mag = self.obj_free[:, :, None] * active_matrix * (GRAV_MATRIX if GRAV_MATRIX_MODE else GRAV_CONST)
+        mag *= (1 - collided_objs) / (dist_squared * dist)
         mag = mag * np.expand_dims(self.obj_mass, 1)
 
         # add to velocity
-        self.obj_vx += np.sum(mag * dx, 2)
-        self.obj_vy += np.sum(mag * dy, 2)
+        self.obj_vx += np.sum(mag * self.dx_matrix, 2)
+        self.obj_vy += np.sum(mag * self.dy_matrix, 2)
 
     def process_update_pixel_list(self):
-        self.update_pixel_list = np.argwhere(np.any(self.track_collisions * self.remaining_hits[:, None], 1)).flatten()
-        num_updates = self.update_pixel_list.shape[0]
-        if num_updates == 0:
+        self.update_pixel_list = np.argwhere(np.any(self.tracker_collisions * self.remaining_hits[:, None], 1)).flatten()
+        if self.update_pixel_list.shape[0] == 0:
             return
 
         # get total new color from hit objects (for loop is more efficient)
         for p in self.update_pixel_list:
 
-            hit_clr = self.track_collisions[p, :, None] * (self.obj_clr[p] - PIXEL_BACK_CLR)
-            if MASS_TRANSPARENCY:
-                hit_clr *= self.obj_mass[p, :, None] / self.total_mass
+            if HUE_MODE == 0:
+                clr_hue = self.obj_clr[p]
+            else:
+                hue_angle = np.arctan2(self.dx_matrix[p, self.tracker_index], self.dy_matrix[p, self.tracker_index])
+                hue_angle = 0.75 - (hue_angle / 3.141592 / 2)
+                hue_angle -= np.floor(hue_angle)
+                hsv = np.column_stack((hue_angle, np.ones_like(hue_angle), np.ones_like(hue_angle)))
+                clr_hue = np.array([colorsys.hsv_to_rgb(*values) for values in hsv]) * 255
 
+            if VALUE_MODE == 0:
+                clr_value_factor = 1 / (self.timer * PIXEL_TIME_CONTRAST / 255 + 1)
+            else:
+                vx = self.obj_vx[p, self.tracker_index]
+                vy = self.obj_vy[p, self.tracker_index]
+                vel = vx * vx + vy * vy
+                clr_value_factor = vel * PIXEL_TIME_CONTRAST
+
+            hit_clr = self.tracker_collisions[p, :, None] * (clr_hue - PIXEL_BACK_CLR)
+            if MASS_WEIGHTED_TRANSPARENCY:
+                hit_clr *= self.obj_mass[p, :, None] / self.total_mass
             hit_clr = np.sum(hit_clr, 0)
-            hit_clr *= PIXEL_TRANSPARENCY / (self.timer * PIXEL_TIME_CONTRAST / 255 + 1)
+
+            hit_clr *= START_PIXEL_TRANSPARENCY * clr_value_factor
             hit_clr *= PIXEL_HIT_TRANSPARENCY[MAX_PIXEL_HITS - self.remaining_hits[p]]
 
             # account for background color
@@ -195,7 +228,7 @@ class World:
                 continue
 
             # combine (for all pixels if pixel doesnt change outcome)
-            combine_for_all_pixels = self.zero_track_mass and a != self.track_obj and b != self.track_obj
+            combine_for_all_pixels = self.zero_track_mass and a != self.tracker_index and b != self.tracker_index
             p_range = None if combine_for_all_pixels else p
             self.combine_obj_into(p_range, a, b)
             self.disable_obj(p_range, b)
@@ -204,9 +237,9 @@ class World:
                 self.update_obj_draw(b, True, False)
 
             # set new track object if it combined
-            if a == self.track_obj or b == self.track_obj:
-                self.track_obj = a
-                self.zero_track_mass = self.zero_track_mass and self.obj_mass[p, self.track_obj] == 0
+            if a == self.tracker_index or b == self.tracker_index:
+                self.tracker_index = a
+                self.zero_track_mass = self.zero_track_mass and self.obj_mass[p, self.tracker_index] == 0
 
             # update next values in the list with new indices
             check_list = self.combine_list[i + 1:]
@@ -233,10 +266,17 @@ class World:
         self.obj_vy[i:j, a] = self.obj_vy[i:j, a] * ra_abs + self.obj_vy[i:j, b] * rb_abs
 
         self.obj_mass[i:j, a] = ma + mb
-        self.obj_rad[i:j, a] = (self.obj_rad[i:j, a] * ra_abs[:, None] +
-                                self.obj_rad[i:j, b] * rb_abs[:, None])
         self.obj_clr[i:j, a] = (self.obj_clr[i:j, a] * ra_abs[:, None] +
                                 self.obj_clr[i:j, b] * rb_abs[:, None])
+
+        if RADIUS_ADDITION_MODE == 0:
+            self.obj_rad[i:j, a] = (self.obj_rad[i:j, a] * ra_abs[:, None] + self.obj_rad[i:j, b] * rb_abs[:, None])
+        elif RADIUS_ADDITION_MODE == 1:
+            self.obj_rad[i:j, a] = self.obj_rad[i:j, a] + self.obj_rad[i:j, b]
+        elif RADIUS_ADDITION_MODE == 2:
+            ra = self.obj_rad[i:j, a]
+            rb = self.obj_rad[i:j, b]
+            self.obj_rad[i:j, a] = np.cbrt(ra * ra * ra + rb * rb * rb)
 
         self.obj_free[i:j, a] = 1
 
@@ -273,3 +313,17 @@ class World:
         px = self.pixel_view % NUM_COLS
         py = self.pixel_view // NUM_COLS
         set_rectangle_border_pos(self.select_pixel_rect, 0, px * GRID_LENGTH, py * GRID_LENGTH)
+
+    def timelapse_update(self):
+        frame = round(self.timer / SIM_SPEED, 4)
+        if TIMELAPSE_ENABLED and frame != 0 and frame % TIMELAPSE_FRAMES == 0:
+            color_buffer = pyglet.image.get_buffer_manager().get_color_buffer()
+            color_buffer = color_buffer.get_region(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+            image_data = color_buffer.get_image_data()
+            buffer = image_data.get_data("RGBA", image_data.pitch)
+            image_array = np.asarray(buffer).reshape((image_data.height, image_data.width, 4))
+            image_array = np.flipud(image_array)
+
+            image = Image.fromarray(image_array)
+            path = IMG_SAVE_PATH + self.start_time + "/" + f"{frame:08.0f}.png"
+            image.save(path)

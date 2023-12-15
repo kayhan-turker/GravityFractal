@@ -1,6 +1,7 @@
 from World import *
-import pyglet
 
+# Set up Pyglet to use the Pillow image encoder
+pyglet.options['image_codecs'] = ['pil']
 # WINDOW AND BATCH CREATION
 
 window = pyglet.window.Window(width=SCREEN_WIDTH * 2, height=SCREEN_HEIGHT)
