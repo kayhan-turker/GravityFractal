@@ -1,13 +1,9 @@
 import colorsys
-import math
-
-import pyglet
 import datetime
-from init_params import *
-from helper_functions import *
-import numpy as np
 import os
 from PIL import Image
+from init_params import *
+from WorldShapes import *
 
 
 class World:
@@ -29,11 +25,6 @@ class World:
 
         self.init_objs()
 
-        self.grid_rectangles = [[None for _ in range(NUM_ROWS)] for _ in range(NUM_COLS)]
-        self.obj_points = [None for _ in range(self.num_objs)]
-        self.grid_border = []
-        self.select_pixel_rect = []
-
         self.zero_track_mass = INIT_MASS[self.tracker_index] == 0
 
         self.timer = int(0)
@@ -48,34 +39,18 @@ class World:
         self.dx_matrix = np.array([])
         self.dy_matrix = np.array([])
 
-        self.init_shapes(grav_batch, out_batch, ui_batch)
+        self.world_shapes = WorldShapes(self, grav_batch, out_batch, ui_batch)
 
         self.start_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         out_path = IMG_SAVE_PATH + self.start_time
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
-    def init_shapes(self, grav_batch, out_batch, ui_batch):
-        for col in range(NUM_COLS):
-            for row in range(NUM_ROWS):
-                self.grid_rectangles[col][row] = shapes.Rectangle(col * GRID_LENGTH, row * GRID_LENGTH,
-                                                                  GRID_LENGTH, GRID_LENGTH,
-                                                                  color=(tuple(PIXEL_BACK_CLR)), batch=out_batch)
+        self.preview_mode = True
+        self.clear_mode = True
+        self.ui_grid = False
 
-        for obj in range(self.num_objs):
-            self.obj_points[obj] = shapes.Circle(SCREEN_WIDTH + self.obj_x[self.pixel_view, obj],
-                                                 self.obj_y[self.pixel_view, obj], self.obj_rad[self.pixel_view, obj],
-                                                 color=self.obj_clr[self.pixel_view, obj].astype(int), batch=grav_batch)
-
-        if GRID_LENGTH >= MIN_GRID_DISPLAY_LENGTH:
-            for col in range(NUM_COLS):
-                for row in range(NUM_ROWS):
-                    extend_with_rectangle_border(self.grid_border, col * GRID_LENGTH, row * GRID_LENGTH,
-                                                 GRID_LENGTH, GRID_LENGTH, 1, (64, 64, 64, 128), ui_batch)
-
-        extend_with_rectangle_border(self.select_pixel_rect, 0, 0, GRID_LENGTH, GRID_LENGTH,
-                                     1, (255, 255, 255, 128), ui_batch)
-        self.set_select_pixel_shape()
+        self.selected_object = None
 
     def init_objs(self):
         self.num_objs = len(INIT_MASS)
@@ -165,7 +140,7 @@ class World:
                 clr_hue = self.obj_clr[p]
             else:
                 hue_angle = np.arctan2(self.dx_matrix[p, self.tracker_index], self.dy_matrix[p, self.tracker_index])
-                hue_angle = 0.75 - (hue_angle / 3.141592 / 2)
+                hue_angle = 0.75 - (hue_angle / PI / 2)
                 hue_angle -= np.floor(hue_angle)
                 hsv = np.column_stack((hue_angle, np.ones_like(hue_angle), np.ones_like(hue_angle)))
                 clr_hue = np.array([colorsys.hsv_to_rgb(*values) for values in hsv]) * 255
@@ -196,7 +171,7 @@ class World:
             px = p % NUM_COLS
             py = p // NUM_COLS
             self.current_pixel_colors[p] = new_clr
-            self.grid_rectangles[px][py].color = tuple(np.clip(new_clr.astype(int), 0, 255))
+            self.world_shapes.grid_rectangles[px][py].color = tuple(np.clip(new_clr.astype(int), 0, 255))
             self.remaining_hits[p] -= 1
 
     def move_objects(self):
@@ -297,11 +272,11 @@ class World:
     def update_obj_draw(self, obj, update_pos=True, update_shape=True):
         pixel = self.pixel_view
         if update_pos:
-            self.obj_points[obj].x = self.obj_x[pixel, obj] + SCREEN_WIDTH
-            self.obj_points[obj].y = self.obj_y[pixel, obj]
+            self.world_shapes.obj_points[obj].x = self.obj_x[pixel, obj] + SCREEN_WIDTH
+            self.world_shapes.obj_points[obj].y = self.obj_y[pixel, obj]
         if update_shape:
-            self.obj_points[obj].radius = self.obj_rad[pixel, obj]
-            self.obj_points[obj].color = self.obj_clr[pixel, obj].astype(int)
+            self.world_shapes.obj_points[obj].radius = self.obj_rad[pixel, obj]
+            self.world_shapes.obj_points[obj].color = self.obj_clr[pixel, obj].astype(int)
 
     def set_pixel_view(self, pixel):
         self.pixel_view = pixel
@@ -312,7 +287,8 @@ class World:
     def set_select_pixel_shape(self):
         px = self.pixel_view % NUM_COLS
         py = self.pixel_view // NUM_COLS
-        set_rectangle_border_pos(self.select_pixel_rect, 0, px * GRID_LENGTH, py * GRID_LENGTH)
+        self.world_shapes.set_rectangle_border_pos(self.world_shapes.select_pixel_rect, 0,
+                                                   px * GRID_LENGTH, py * GRID_LENGTH)
 
     def timelapse_update(self):
         frame = round(self.timer / SIM_SPEED, 4)

@@ -1,4 +1,6 @@
+import pyglet.window.key
 from World import *
+from operations import *
 
 # Set up Pyglet to use the Pillow image encoder
 pyglet.options['image_codecs'] = ['pil']
@@ -10,8 +12,6 @@ out_batch = pyglet.graphics.Batch()
 grav_batch = pyglet.graphics.Batch()
 ui_batch = pyglet.graphics.Batch()
 
-clear_mode = True
-ui_grid = False
 
 world = World(grav_batch, out_batch, ui_batch)
 fps_display = pyglet.window.FPSDisplay(window=window)
@@ -20,13 +20,13 @@ fps_display.label.x = SCREEN_WIDTH * 2 - 105
 
 @window.event
 def on_draw():
-    if clear_mode:
+    if world.clear_mode:
         window.clear()
     grav_batch.draw()
     out_batch.draw()
-    if ui_grid:
+    if world.ui_grid:
         ui_batch.draw()
-    if clear_mode:
+    if world.clear_mode:
         fps_display.draw()
 
 
@@ -37,17 +37,16 @@ def update(dt):
 @window.event
 def on_mouse_press(x, y, button, modifiers):
     if button == 1 and 0 < x < 2 * SCREEN_WIDTH and 0 < y < SCREEN_HEIGHT:
-        click_x = x // GRID_LENGTH % NUM_COLS
-        click_y = y // GRID_LENGTH
-        world.set_pixel_view(click_x + click_y * NUM_COLS)
+        clicked_obj = get_clicked_obj(x, y, world)
+        world.selected_object = clicked_obj
+        if clicked_obj is None:
+            set_pixel_view(x, y, world)
 
 
 @window.event
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
     if buttons == 1 and 0 < x < 2 * SCREEN_WIDTH and 0 < y < SCREEN_HEIGHT:
-        click_x = x // GRID_LENGTH % NUM_COLS
-        click_y = y // GRID_LENGTH
-        world.set_pixel_view(click_x + click_y * NUM_COLS)
+        set_pixel_view(x, y, world)
 
 
 def check_move_pixel(symbol):
@@ -71,14 +70,16 @@ def check_move_pixel(symbol):
 
 @window.event
 def on_key_press(symbol, modifiers):
-    global clear_mode, ui_grid
     check_move_pixel(symbol)
 
+    if symbol == pyglet.window.key.SPACE:
+        PREVIEW_MODE = False
+
     if symbol == pyglet.window.key._1:
-        ui_grid = not ui_grid
+        world.ui_grid = not world.ui_grid
     if symbol == pyglet.window.key._2:
         window.clear()
-        clear_mode = not clear_mode
+        world.clear_mode = not world.clear_mode
 
 pyglet.clock.schedule_interval(update, 1 / 60.0)
 pyglet.app.run()
